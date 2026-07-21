@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import re
-import sys
 from pathlib import Path
 
 
@@ -17,6 +16,7 @@ REQUIRED = [
     "CLERK_SECRET_KEY",
     "CLERK_JWT_TEMPLATE_NAME",
     "PRICETRACKER_ENVIRONMENT",
+    "PRICETRACKER_DEBUG",
     "PRICETRACKER_FRONTEND_BASE_URL",
     "PRICETRACKER_ALLOWED_ORIGINS",
     "PRICETRACKER_CLERK_ISSUER",
@@ -76,6 +76,8 @@ def main() -> int:
 
     if env.get("PRICETRACKER_ENVIRONMENT") != "production":
         errors.append("PRICETRACKER_ENVIRONMENT must be production")
+    if env.get("PRICETRACKER_DEBUG", "").lower() not in {"false", "0", "no", "off"}:
+        errors.append("PRICETRACKER_DEBUG must be false in production")
 
     domain = env.get("DOMAIN", "")
     if domain in {"localhost", "127.0.0.1"}:
@@ -103,7 +105,9 @@ def main() -> int:
         errors.append("PRICETRACKER_EMAIL_FROM still uses the example.test placeholder")
 
     if env.get("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY") in PLACEHOLDER_PUBLISHABLE_KEYS:
-        errors.append("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is the CI placeholder, not a real key")
+        errors.append(
+            "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is the CI placeholder, not a real key"
+        )
 
     if env.get("POSTGRES_PASSWORD") in {"change-me-locally", "postgres", "password"}:
         errors.append("POSTGRES_PASSWORD must be a strong generated value")
@@ -121,10 +125,16 @@ def main() -> int:
 
     secret = env.get("PRICETRACKER_BRIGHT_DATA_WEBHOOK_SECRET", "")
     if secret and len(secret) < 24:
-        warnings.append("PRICETRACKER_BRIGHT_DATA_WEBHOOK_SECRET should be a long random value")
+        errors.append(
+            "PRICETRACKER_BRIGHT_DATA_WEBHOOK_SECRET must contain at least 24 characters"
+        )
 
-    if not re.match(r"^pk_(test|live)_", env.get("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "")):
-        warnings.append("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY does not look like a Clerk publishable key")
+    if not re.match(
+        r"^pk_(test|live)_", env.get("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "")
+    ):
+        warnings.append(
+            "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY does not look like a Clerk publishable key"
+        )
     if not re.match(r"^sk_(test|live)_", env.get("CLERK_SECRET_KEY", "")):
         warnings.append("CLERK_SECRET_KEY does not look like a Clerk secret key")
 

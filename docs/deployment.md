@@ -228,13 +228,25 @@ cd /opt/pricetracker
 ./scripts/deploy.sh
 ```
 
+The deploy succeeds only after `https://$DOMAIN/healthz` responds successfully.
+If DNS or certificate issuance is intentionally still pending during the first
+bootstrap, you can leave the stack running with an explicit override:
+
+```bash
+./scripts/deploy.sh --allow-public-health-failure
+```
+
+Use that override only for the initial bootstrap. Routine deploys should fail
+when the public endpoint is unavailable so automation cannot report a broken
+release as successful.
+
 The script, in order: pulls the latest commit (`git pull --ff-only`),
 validates `.env`, builds all images, applies database migrations via the
 one-shot `migrate` service, starts the stack, waits for the API to report
 ready on the loopback port, and finally checks `https://$DOMAIN/healthz`.
 
-The first run builds every image and takes several minutes. Watch certificate
-issuance if the final public check warns:
+The first run builds every image and takes several minutes. If the bootstrap
+override is needed, watch certificate issuance until the public check passes:
 
 ```bash
 docker compose --env-file .env -f infra/compose.yaml logs -f caddy

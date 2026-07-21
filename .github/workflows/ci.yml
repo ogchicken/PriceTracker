@@ -71,6 +71,9 @@ jobs:
           uv run --with ruff ruff check .
           uv run --with ruff ruff format --check .
 
+      - name: Validate deployment script syntax
+        run: bash -n ../../scripts/deploy.sh
+
       - name: Type-check backend
         run: uv run --with mypy mypy .
 

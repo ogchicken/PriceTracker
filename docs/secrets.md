@@ -27,7 +27,7 @@ Rules that apply to everything below:
 | `API_BASE_URL` | fixed: `http://api:8000` in Compose, `http://localhost:8000` host dev | web (server) |
 | `PRICETRACKER_ENVIRONMENT` | you choose: `development` / `production` | api, worker, scheduler |
 | `PRICETRACKER_SERVICE_ROLE` | fixed: `all` (single-VPS stack) | api, worker, scheduler |
-| `PRICETRACKER_DEBUG`, `PRICETRACKER_LOG_LEVEL` | you choose | api, worker, scheduler |
+| `PRICETRACKER_DEBUG`, `PRICETRACKER_LOG_LEVEL` | `false` in production; choose the log level | api, worker, scheduler |
 | `PRICETRACKER_ALLOWED_ORIGINS` | derived: `["https://$DOMAIN"]` in production | api |
 | `PRICETRACKER_FRONTEND_BASE_URL` | derived: `https://$DOMAIN` in production | api |
 | `POSTGRES_DB`, `POSTGRES_USER` | you choose (defaults are fine) | postgres, api services |

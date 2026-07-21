@@ -7,6 +7,29 @@ set -euo pipefail
 
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+usage() {
+  echo "Usage: $0 [--allow-public-health-failure]"
+}
+
+allow_public_health_failure=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --allow-public-health-failure)
+      allow_public_health_failure=1
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "ERROR: unknown argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
 # Read a value from .env (last definition wins; surrounding quotes stripped).
 read_env() { sed -n "s/^[[:space:]]*$1=//p" .env | tr -d "\"'" | tail -n 1; }
 
@@ -71,12 +94,27 @@ esac
 
 DOMAIN="$(read_env DOMAIN)"
 if [ -n "${DOMAIN}" ] && [ "${DOMAIN}" != "localhost" ]; then
-  if curl -fsS --max-time 15 "https://${DOMAIN}/healthz" >/dev/null 2>&1; then
+  echo "==> Waiting for the public endpoint to become ready"
+  public_ready=0
+  for attempt in $(seq 1 6); do
+    if curl -fsS --max-time 5 "https://${DOMAIN}/healthz" >/dev/null 2>&1; then
+      public_ready=1
+      break
+    fi
+    if [ "${attempt}" != 6 ]; then
+      sleep 5
+    fi
+  done
+  if [ "${public_ready}" = 1 ]; then
     echo "==> Public health check passed: https://${DOMAIN}/healthz"
+  elif [ "${allow_public_health_failure}" = 1 ]; then
+    echo "WARN: https://${DOMAIN}/healthz is not reachable." >&2
+    echo "      Continuing because --allow-public-health-failure was supplied." >&2
   else
-    echo "WARN: https://${DOMAIN}/healthz is not reachable yet." >&2
-    echo "      On a first deploy this usually means DNS or the TLS certificate" >&2
-    echo "      is still propagating; watch: docker compose --env-file .env -f infra/compose.yaml logs -f caddy" >&2
+    echo "ERROR: https://${DOMAIN}/healthz did not become reachable." >&2
+    echo "       Check DNS, firewall rules, and the Caddy logs below." >&2
+    "${COMPOSE[@]}" logs --tail=100 caddy
+    exit 1
   fi
 fi
 
