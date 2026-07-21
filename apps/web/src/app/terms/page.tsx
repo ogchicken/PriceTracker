@@ -26,7 +26,7 @@ const sections = [
   {
     title: "Service changes",
     paragraphs: [
-      "Supported stores, checks, and features may change as the product evolves. Demo mode contains sample information and does not persist actions as real tracking activity."
+      "Supported stores, checks, and features may change as the product evolves."
     ]
   },
   {

@@ -54,10 +54,10 @@ flowchart LR
   Tasks must be idempotent because delivery is at least once.
 - **Celery beat/scheduler** emits due-check jobs. Exactly one scheduler should
   run per environment.
-- **Bright Data** performs external retail collection. Fake mode substitutes
-  deterministic fixtures in local development and CI.
-- **Resend** sends transactional price-alert email. Console and Mailpit modes
-  avoid external delivery during development.
+- **Bright Data** performs external retail collection. Tests substitute
+  injected mock transports; there is no fake-provider runtime mode.
+- **Resend** sends transactional price-alert email. A blank API key selects a
+  non-delivering logging provider during development and tests.
 
 ## Trust boundaries
 
@@ -100,8 +100,8 @@ duplicates without repeating side effects.
 
 PostgreSQL and Redis are not publicly reachable in production. API, worker,
 and scheduler receive only the secrets their roles require. Browser bundles
-receive only `NEXT_PUBLIC_DEMO_MODE` and Clerk's publishable key; the Next.js
-server uses `API_BASE_URL` for backend calls.
+receive only Clerk's publishable key; the Next.js server uses `API_BASE_URL`
+for backend calls.
 
 ## Core data model
 

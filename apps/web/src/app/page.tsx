@@ -108,7 +108,7 @@ export default function LandingPage() {
               </div>
               <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
                 <Button size="lg" asChild>
-                  <Link href="/dashboard">
+                  <Link href="/sign-up">
                     Start tracking
                     <ArrowRightIcon data-icon="inline-end" aria-hidden="true" />
                   </Link>
@@ -119,7 +119,7 @@ export default function LandingPage() {
               </div>
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
                 <ShieldCheckIcon aria-hidden="true" className="size-4 text-primary" />
-                Demo mode works without an account or connected marketplace.
+                Your watchlist stays private to your account.
               </p>
             </div>
 
@@ -290,20 +290,20 @@ export default function LandingPage() {
                 Turn “I’ll check later” into a target you can track.
               </CardTitle>
               <CardDescription className="max-w-xl text-background/70">
-                Explore the complete dashboard with realistic sample data, then connect
-                authentication and the API when your environment is ready.
+                Create an account, add your first product link, and let the tracker
+                watch the price for you.
               </CardDescription>
             </CardHeader>
             <CardContent className="px-8 sm:px-12">
               <Button variant="secondary" size="lg" asChild>
-                <Link href="/dashboard">
-                  Explore the dashboard
+                <Link href="/sign-up">
+                  Create your account
                   <ArrowRightIcon data-icon="inline-end" aria-hidden="true" />
                 </Link>
               </Button>
             </CardContent>
             <CardFooter className="px-8 text-background/60 sm:px-12">
-              No purchase or savings claim is implied by the demo.
+              Prices and availability are observed from the marketplaces; always confirm at checkout.
             </CardFooter>
           </Card>
         </section>

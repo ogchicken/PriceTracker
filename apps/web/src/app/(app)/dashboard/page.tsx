@@ -1,5 +1,4 @@
 import {
-  ActivityIcon,
   ArrowDownRightIcon,
   BellRingIcon,
   CircleDollarSignIcon,
@@ -11,7 +10,6 @@ import Link from "next/link";
 
 import { AddItemDialog } from "@/components/add-item-dialog";
 import { TrackedItemCard } from "@/components/tracked-item-card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,8 +28,7 @@ import { formatMoney } from "@/lib/utils";
 export const metadata = { title: "Dashboard" };
 
 export default async function DashboardPage() {
-  const result = await getDashboard();
-  const dashboard = result.data;
+  const dashboard = await getDashboard();
   const metrics = [
     {
       label: "Tracked items",
@@ -64,7 +61,7 @@ export default async function DashboardPage() {
       <section className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <Badge variant="secondary">{result.source === "demo" ? "Sample workspace" : "Live workspace"}</Badge>
+            <Badge variant="secondary">Live workspace</Badge>
           </div>
           <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Good prices start here.</h1>
           <p className="max-w-2xl text-muted-foreground">
@@ -73,14 +70,6 @@ export default async function DashboardPage() {
         </div>
         <AddItemDialog />
       </section>
-
-      {result.notice ? (
-        <Alert variant="warning">
-          <ActivityIcon aria-hidden="true" />
-          <AlertTitle>Live data unavailable</AlertTitle>
-          <AlertDescription>{result.notice}</AlertDescription>
-        </Alert>
-      ) : null}
 
       <section aria-labelledby="overview-heading">
         <h2 id="overview-heading" className="sr-only">

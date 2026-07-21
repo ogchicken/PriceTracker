@@ -6,8 +6,7 @@ const sections = [
   {
     title: "Information the product uses",
     paragraphs: [
-      "When connected, PriceTracker uses account identifiers from the authentication provider, product URLs and targets you submit, observed price history, notification preferences, and basic operational logs.",
-      "Demo mode uses sample workspace data. Actions in demo mode are simulated and are not stored as a real user watchlist."
+      "PriceTracker uses account identifiers from the authentication provider, product URLs and targets you submit, observed price history, notification preferences, and basic operational logs."
     ]
   },
   {

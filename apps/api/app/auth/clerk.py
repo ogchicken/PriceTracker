@@ -124,8 +124,6 @@ async def get_current_identity(
     settings: Settings = Depends(get_settings),
 ) -> AuthUser:
     if credentials is None:
-        if settings.fake_auth_enabled and settings.environment in {"development", "test"}:
-            return AuthUser(settings.fake_auth_user_id, settings.fake_auth_email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="bearer token required",

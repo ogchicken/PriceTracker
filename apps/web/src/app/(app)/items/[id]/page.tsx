@@ -15,7 +15,6 @@ import { notFound } from "next/navigation";
 
 import { ItemActions } from "@/components/item-actions";
 import { PriceChart } from "@/components/price-chart";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,14 +32,13 @@ import { formatMoney } from "@/lib/utils";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const result = await getItem(id);
-  return { title: result.data?.title ?? "Tracked item" };
+  const item = await getItem(id);
+  return { title: item?.title ?? "Tracked item" };
 }
 
 export default async function ItemDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const result = await getItem(id);
-  const item = result.data;
+  const item = await getItem(id);
   if (!item) notFound();
 
   const stats = [
@@ -76,12 +74,6 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
             Dashboard
           </Link>
         </Button>
-        {result.notice ? (
-          <Alert variant="warning">
-            <AlertTitle>Showing sample item data</AlertTitle>
-            <AlertDescription>{result.notice}</AlertDescription>
-          </Alert>
-        ) : null}
         <section className="flex flex-col justify-between gap-6 lg:flex-row lg:items-start">
           <div className="flex min-w-0 gap-4">
             <span className="flex size-16 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">

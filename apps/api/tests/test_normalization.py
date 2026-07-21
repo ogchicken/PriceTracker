@@ -5,7 +5,12 @@ import pytest
 
 from app.config import Settings
 from app.models import AvailabilityStatus, Store
-from app.providers.brightdata import BrightDataClient, money_to_minor, normalize_result
+from app.providers.brightdata import (
+    BrightDataClient,
+    BrightDataError,
+    money_to_minor,
+    normalize_result,
+)
 
 
 @pytest.mark.parametrize(
@@ -92,18 +97,15 @@ def test_provider_result_rejects_ebay_auction() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fake_provider_never_makes_http_request() -> None:
+async def test_trigger_without_credentials_fails_before_any_http() -> None:
     def reject_request(request: httpx.Request) -> httpx.Response:
         raise AssertionError(f"unexpected paid provider request: {request.url}")
 
     http_client = httpx.AsyncClient(transport=httpx.MockTransport(reject_request))
-    client = BrightDataClient(
-        Settings(environment="test", fake_provider_enabled=True),
-        http_client=http_client,
-    )
+    client = BrightDataClient(Settings(environment="test"), http_client=http_client)
     try:
-        snapshot = await client.trigger(Store.AMAZON, ["https://www.amazon.com/dp/B08N5WRWNW"])
-        assert snapshot.fake is True
+        with pytest.raises(BrightDataError):
+            await client.trigger(Store.AMAZON, ["https://www.amazon.com/dp/B08N5WRWNW"])
     finally:
         await http_client.aclose()
 
@@ -120,7 +122,6 @@ async def test_live_trigger_configures_authenticated_result_webhook() -> None:
     client = BrightDataClient(
         Settings(
             environment="development",
-            fake_provider_enabled=False,
             bright_data_api_token="token",
             bright_data_amazon_dataset_id="amazon-dataset",
             bright_data_ebay_dataset_id="ebay-dataset",

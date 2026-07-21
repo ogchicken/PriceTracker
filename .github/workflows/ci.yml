@@ -44,8 +44,6 @@ jobs:
         working-directory: apps/api
     env:
       PRICETRACKER_ENVIRONMENT: test
-      PRICETRACKER_FAKE_AUTH_ENABLED: "true"
-      PRICETRACKER_FAKE_PROVIDER_ENABLED: "true"
       PRICETRACKER_DATABASE_URL: postgresql+asyncpg://pricetracker:pricetracker@localhost:5432/pricetracker_test
       PRICETRACKER_REDIS_URL: redis://localhost:6379/0
       PRICETRACKER_CELERY_BROKER_URL: redis://localhost:6379/1
@@ -133,7 +131,9 @@ jobs:
       - name: Build frontend
         env:
           API_BASE_URL: http://localhost:8000
-          NEXT_PUBLIC_DEMO_MODE: "true"
+          # Placeholder key so `next build` succeeds; no Clerk account is contacted.
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_live_Y2xlcmsuZXhhbXBsZS5jb20k
+          CLERK_SECRET_KEY: sk_live_ci_placeholder
         run: pnpm --dir apps/web build
 
       - name: Install Playwright browser
@@ -152,10 +152,13 @@ jobs:
         uses: docker/setup-buildx-action@v4
 
       - name: Prepare validation environment
-        run: cp .env.example .env
+        run: |
+          cp .env.example .env
+          # Placeholder key so the web image's `next build` succeeds.
+          echo "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_Y2xlcmsuZXhhbXBsZS5jb20k" >> .env
 
       - name: Validate Compose configuration
-        run: docker compose --env-file .env -f infra/compose.yaml config --quiet
+        run: docker compose --env-file .env -f infra/compose.yaml --profile dev --profile prod --profile ops config --quiet
 
       - name: Build application images
         run: docker compose --env-file .env -f infra/compose.yaml build api worker scheduler web

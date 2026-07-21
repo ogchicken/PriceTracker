@@ -11,7 +11,6 @@ x-api-service: &api-service
     PRICETRACKER_REDIS_URL: redis://redis:6379/0
     PRICETRACKER_CELERY_BROKER_URL: redis://redis:6379/1
     PRICETRACKER_CELERY_RESULT_BACKEND: redis://redis:6379/2
-    PRICETRACKER_FRONTEND_BASE_URL: http://localhost:${WEB_PORT:-3000}
   depends_on:
     postgres:
       condition: service_healthy
@@ -29,7 +28,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-pricetracker}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-locally}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql
     healthcheck:
@@ -46,7 +45,7 @@ services:
     image: redis:7.4-alpine
     command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
     healthcheck:
@@ -58,16 +57,26 @@ services:
     networks:
       - app
 
+  migrate:
+    <<: *api-service
+    profiles: ["ops"]
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+
   api:
     <<: *api-service
     command:
       [
-        "sh",
-        "-c",
-        "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers",
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--proxy-headers",
       ]
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "127.0.0.1:${API_PORT:-8000}:8000"
     healthcheck:
       test:
         [
@@ -132,13 +141,11 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         API_BASE_URL: http://api:8000
-        NEXT_PUBLIC_DEMO_MODE: ${NEXT_PUBLIC_DEMO_MODE:-true}
         NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
     env_file:
       - ../.env
     environment:
       API_BASE_URL: http://api:8000
-      NEXT_PUBLIC_DEMO_MODE: ${NEXT_PUBLIC_DEMO_MODE:-true}
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
       CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
       CLERK_JWT_TEMPLATE_NAME: ${CLERK_JWT_TEMPLATE_NAME:-pricetracker-api}
@@ -146,7 +153,7 @@ services:
       api:
         condition: service_healthy
     ports:
-      - "${WEB_PORT:-3000}:3000"
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
     healthcheck:
       test:
         [
@@ -163,12 +170,35 @@ services:
     networks:
       - app
 
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["prod"]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app
+
   mailpit:
     image: axllent/mailpit:v1.27
     profiles: ["dev"]
     ports:
-      - "${MAILPIT_SMTP_PORT:-1025}:1025"
-      - "${MAILPIT_UI_PORT:-8025}:8025"
+      - "127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
     healthcheck:
       test: ["CMD", "/mailpit", "readyz"]
       interval: 10s
@@ -181,8 +211,9 @@ services:
 volumes:
   postgres-data:
   redis-data:
+  caddy-data:
+  caddy-config:
 
 networks:
   app:
     driver: bridge
-

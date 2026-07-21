@@ -2,7 +2,6 @@ import { formatDistanceToNow } from "date-fns";
 import { ArrowRightIcon, BellIcon, BellRingIcon } from "lucide-react";
 import Link from "next/link";
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,8 +20,7 @@ import { cn } from "@/lib/utils";
 export const metadata = { title: "Notifications" };
 
 export default async function NotificationsPage() {
-  const result = await getNotifications();
-  const notifications = result.data;
+  const notifications = await getNotifications();
   const unread = notifications.filter((notification) => notification.readAt === null).length;
 
   return (
@@ -36,14 +34,6 @@ export default async function NotificationsPage() {
           Target alerts and meaningful changes from your tracked items.
         </p>
       </section>
-
-      {result.notice ? (
-        <Alert variant="warning">
-          <BellIcon aria-hidden="true" />
-          <AlertTitle>Live notifications unavailable</AlertTitle>
-          <AlertDescription>{result.notice}</AlertDescription>
-        </Alert>
-      ) : null}
 
       {notifications.length ? (
         <Card>

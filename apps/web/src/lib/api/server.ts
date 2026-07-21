@@ -18,32 +18,22 @@ import {
 import type {
   CreateTrackedItemInput,
   DashboardDto,
-  DataResult,
   NotificationDto,
   PreferencesDto,
   SavePreferencesInput,
   TrackedItemDto,
   UpdateTrackedItemInput
 } from "@/lib/api/types";
-import {
-  demoDashboard,
-  demoNotifications,
-  demoPreferences,
-  getDemoItem
-} from "@/lib/demo-data";
 
 const apiBaseUrl = process.env.API_BASE_URL;
 
-export const isDemoMode =
-  process.env.NEXT_PUBLIC_DEMO_MODE === "true" || !apiBaseUrl;
-
 export async function getAccessToken() {
   if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || !process.env.CLERK_SECRET_KEY) {
-    throw new Error("Clerk is required when demo mode is disabled.");
+    throw new Error("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY are required.");
   }
   const template = process.env.CLERK_JWT_TEMPLATE_NAME?.trim();
   if (!template) {
-    throw new Error("CLERK_JWT_TEMPLATE_NAME is required when demo mode is disabled.");
+    throw new Error("CLERK_JWT_TEMPLATE_NAME is required.");
   }
   const session = await auth();
   const token = await session.getToken({ template });
@@ -52,7 +42,7 @@ export async function getAccessToken() {
 }
 
 async function getClient() {
-  if (!apiBaseUrl) return null;
+  if (!apiBaseUrl) throw new Error("API_BASE_URL is required.");
   return new PriceTrackerApi(apiBaseUrl, await getAccessToken());
 }
 
@@ -144,27 +134,18 @@ function mapNotification(notification: ApiNotification): NotificationDto {
   };
 }
 
-async function withFallback<T>(
-  request: (client: PriceTrackerApi) => Promise<T>,
-  fallback: () => T
-): Promise<DataResult<T>> {
-  if (isDemoMode) {
-    return { data: fallback(), source: "demo" };
-  }
-
+async function callApi<T>(request: (client: PriceTrackerApi) => Promise<T>): Promise<T> {
   const client = await getClient();
-  if (!client) throw new Error("API_BASE_URL is required when demo mode is disabled.");
-
   try {
-    return { data: await request(client), source: "api" };
+    return await request(client);
   } catch (error) {
     console.error("PriceTracker API read failed", error);
-    throw new Error("The live PriceTracker API request failed.", { cause: error });
+    throw new Error("The PriceTracker API request failed.", { cause: error });
   }
 }
 
-export function getDashboard(): Promise<DataResult<DashboardDto>> {
-  return withFallback(
+export function getDashboard(): Promise<DashboardDto> {
+  return callApi(
     async (client) => {
       const watches = await client.listWatches();
       const histories = await Promise.all(
@@ -185,13 +166,12 @@ export function getDashboard(): Promise<DataResult<DashboardDto>> {
         recentDrops,
         items
       });
-    },
-    () => demoDashboard
+    }
   );
 }
 
-export function getItem(id: string): Promise<DataResult<TrackedItemDto | null>> {
-  return withFallback<TrackedItemDto | null>(
+export function getItem(id: string): Promise<TrackedItemDto | null> {
+  return callApi<TrackedItemDto | null>(
     async (client) => {
       try {
         const [watch, history] = await Promise.all([
@@ -203,21 +183,19 @@ export function getItem(id: string): Promise<DataResult<TrackedItemDto | null>> 
         if (error instanceof ApiError && error.status === 404) return null;
         throw error;
       }
-    },
-    () => getDemoItem(id)
+    }
   );
 }
 
-export function getNotifications(): Promise<DataResult<NotificationDto[]>> {
-  return withFallback(
+export function getNotifications(): Promise<NotificationDto[]> {
+  return callApi(
     async (client) =>
-      notificationListDtoSchema.parse((await client.getNotifications()).map(mapNotification)),
-    () => demoNotifications
+      notificationListDtoSchema.parse((await client.getNotifications()).map(mapNotification))
   );
 }
 
-export function getPreferences(): Promise<DataResult<PreferencesDto>> {
-  return withFallback(
+export function getPreferences(): Promise<PreferencesDto> {
+  return callApi(
     async (client) => {
       const preferences = await client.getPreferences();
       return preferencesDtoSchema.parse({
@@ -226,15 +204,12 @@ export function getPreferences(): Promise<DataResult<PreferencesDto>> {
         priceDropMinimumPercent: preferences.alert_rearm_percent,
         timezone: "UTC"
       });
-    },
-    () => demoPreferences
+    }
   );
 }
 
 export async function createItem(input: CreateTrackedItemInput) {
-  if (isDemoMode) return { id: `demo-${Date.now()}` };
   const client = await getClient();
-  if (!client) throw new Error("The API is not configured.");
   return client.createWatch({
     url: input.productUrl,
     target_price_minor: toMinor(input.targetPrice, input.currency),
@@ -244,9 +219,7 @@ export async function createItem(input: CreateTrackedItemInput) {
 }
 
 export async function updateItem(id: string, input: UpdateTrackedItemInput) {
-  if (isDemoMode) return getDemoItem(id);
   const client = await getClient();
-  if (!client) throw new Error("The API is not configured.");
   const current = await client.getWatch(id);
   const updated = await client.updateWatch(id, {
     target_price_minor:
@@ -259,16 +232,12 @@ export async function updateItem(id: string, input: UpdateTrackedItemInput) {
 }
 
 export async function deleteItem(id: string) {
-  if (isDemoMode) return;
   const client = await getClient();
-  if (!client) throw new Error("The API is not configured.");
   await client.deleteWatch(id);
 }
 
 export async function savePreferences(input: SavePreferencesInput) {
-  if (isDemoMode) return { ...demoPreferences, ...input };
   const client = await getClient();
-  if (!client) throw new Error("The API is not configured.");
   const saved = await client.savePreferences({
     email_enabled: input.emailNotifications,
     alert_rearm_percent: input.priceDropMinimumPercent

@@ -8,7 +8,7 @@ PNPM := pnpm --dir apps/web
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup env infra-up infra-down live-check live-up live-down \
+.PHONY: help setup env infra-up infra-down deploy-check deploy \
 	dev-api dev-worker dev-scheduler dev-web \
 	migrate migration lint typecheck test build compose-validate compose-build clean
 
@@ -16,9 +16,8 @@ help:
 	@echo "setup             Install frontend and backend dependencies"
 	@echo "env               Create .env from .env.example (Python 3 required)"
 	@echo "infra-up          Start PostgreSQL, Redis, and Mailpit"
-	@echo "live-check        Validate .env for real (non-demo) operation"
-	@echo "live-up           Rebuild and start the full stack for live mode"
-	@echo "live-down         Stop the Compose stack"
+	@echo "deploy-check      Validate .env for a production deploy"
+	@echo "deploy            Run scripts/deploy.sh on the VPS (VPS_HOST=user@host)"
 	@echo "dev-api           Run the FastAPI development server"
 	@echo "dev-worker        Run the Celery worker"
 	@echo "dev-scheduler     Run the Celery beat scheduler"
@@ -50,16 +49,12 @@ infra-up:
 infra-down:
 	$(COMPOSE) down
 
-live-check:
+deploy-check:
 	python scripts/check_live_env.py --env-file .env
 
-live-up: live-check
-	$(COMPOSE) down
-	$(COMPOSE) up -d --build
-	$(COMPOSE) ps
-
-live-down:
-	$(COMPOSE) down
+deploy:
+	@test -n "$(VPS_HOST)" || (echo "Usage: make deploy VPS_HOST=user@host [VPS_PATH=/opt/pricetracker]" && exit 1)
+	ssh $(VPS_HOST) "cd $(or $(VPS_PATH),/opt/pricetracker) && ./scripts/deploy.sh"
 
 dev-api:
 	$(UV_RUN) uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

@@ -35,9 +35,6 @@ class Settings(BaseSettings):
     clerk_jwks_json: str | None = None
     clerk_pem_public_key: str | None = None
     clerk_webhook_secret: str | None = None
-    fake_auth_enabled: bool = False
-    fake_auth_user_id: str = "user_development"
-    fake_auth_email: str = "developer@example.test"
 
     bright_data_api_base_url: str = "https://api.brightdata.com"
     bright_data_api_token: str | None = None
@@ -45,7 +42,6 @@ class Settings(BaseSettings):
     bright_data_ebay_dataset_id: str | None = None
     bright_data_webhook_url: str | None = None
     bright_data_webhook_secret: str | None = None
-    fake_provider_enabled: bool = True
 
     resend_api_key: str | None = None
     email_from: str = "PriceTracker <alerts@example.test>"
@@ -91,10 +87,6 @@ class Settings(BaseSettings):
         if self.environment in {"staging", "production"}:
             validates_api = self.service_role in {"all", "api"}
             validates_worker = self.service_role in {"all", "worker"}
-            if validates_api and self.fake_auth_enabled:
-                raise ValueError("fake authentication may only be enabled in development or test")
-            if validates_worker and self.fake_provider_enabled:
-                raise ValueError("fake provider mode must be disabled outside development and test")
             required: dict[str, object] = {
                 "database_url": self.database_url,
                 "redis_url": self.redis_url,

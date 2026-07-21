@@ -15,7 +15,6 @@ import { usePathname } from "next/navigation";
 import { AddItemDialog } from "@/components/add-item-dialog";
 import { Brand } from "@/components/brand";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -62,15 +61,7 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-export function AppShell({
-  children,
-  demoMode,
-  clerkEnabled
-}: {
-  children: React.ReactNode;
-  demoMode: boolean;
-  clerkEnabled: boolean;
-}) {
+export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
@@ -90,30 +81,11 @@ export function AppShell({
         </div>
         <div className="flex flex-col gap-4">
           <Separator />
-          {demoMode ? (
-            <div className="flex flex-col gap-1 px-2">
-              <Badge variant="secondary">Demo workspace</Badge>
-              <p className="text-xs leading-5 text-muted-foreground">
-                Sample data · changes are simulated
-              </p>
-            </div>
-          ) : null}
           <div className="flex items-center gap-3 rounded-lg p-2">
-            {clerkEnabled ? (
-              <UserButton />
-            ) : (
-              <span
-                aria-hidden="true"
-                className="flex size-8 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground"
-              >
-                DM
-              </span>
-            )}
+            <UserButton />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{clerkEnabled ? "Your account" : "Demo member"}</p>
-              <p className="truncate text-xs text-muted-foreground">
-                {clerkEnabled ? "Manage with Clerk" : "Local preview"}
-              </p>
+              <p className="truncate text-sm font-medium">Your account</p>
+              <p className="truncate text-xs text-muted-foreground">Manage with Clerk</p>
             </div>
           </div>
         </div>
@@ -153,7 +125,6 @@ export function AppShell({
             Keep an eye on the price, not the product page.
           </p>
           <div className="flex items-center gap-2">
-            {demoMode ? <Badge variant="outline">Demo</Badge> : null}
             <ThemeToggle />
             <Button variant="ghost" size="icon" asChild aria-label="Notifications">
               <Link href="/notifications">
@@ -161,16 +132,7 @@ export function AppShell({
               </Link>
             </Button>
             <span className="lg:hidden">
-              {clerkEnabled ? (
-                <UserButton />
-              ) : (
-                <span
-                  aria-label="Demo member"
-                  className="flex size-8 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground"
-                >
-                  DM
-                </span>
-              )}
+              <UserButton />
             </span>
           </div>
         </header>
