@@ -52,7 +52,7 @@
     "jsdom": "latest",
     "openapi-typescript": "latest",
     "tailwindcss": "latest",
-    "typescript": "5.9.3",
+    "typescript": "7.0.2",
     "vitest": "latest"
   },
   "engines": {
