@@ -120,7 +120,7 @@ docker compose --env-file .env -f infra/compose.yaml --profile dev up --build
 Stop containers with:
 
 ```powershell
-docker compose --env-file .env -f infra/compose.yaml down
+docker compose --env-file .env -f infra/compose.yaml --profile dev down
 ```
 
 ## Run for real (not demo)
