@@ -69,9 +69,3 @@ export interface SavePreferencesInput {
   weeklyDigest: boolean;
   priceDropMinimumPercent: number;
 }
-
-export interface DataResult<T> {
-  data: T;
-  source: "api" | "demo";
-  notice?: string;
-}

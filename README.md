@@ -2,22 +2,23 @@
 
 PriceTracker monitors retail product prices, records price history, and sends
 user alerts when a target price is reached. It is a pnpm/uv monorepo with a
-Next.js frontend, a FastAPI API, and Celery workers.
+Next.js frontend, a FastAPI API, and Celery workers, deployed as a single
+Docker Compose stack behind a Caddy reverse proxy.
 
 ## Architecture
 
 ```text
-Browser -> Next.js (apps/web) -> FastAPI (apps/api) -> PostgreSQL
-                                  |      |
-                                  |      +-> Redis -> Celery worker
-                                  |                    |
-                                  +<---------------- Bright Data
-                                  |
-                                  +-> Resend (price alerts)
+Browser -> Caddy (TLS) -> Next.js (apps/web) -> FastAPI (apps/api) -> PostgreSQL
+                                                 |      |
+                                                 |      +-> Redis -> Celery worker
+                                                 |                    |
+                                                 +<---------------- Bright Data
+                                                 |
+                                                 +-> Resend (price alerts)
 
 Clerk -> Next.js session -> Clerk JWT -> FastAPI authorization
-Clerk/Bright Data ---------------------> signed API webhooks
-Celery beat ---------------------------> scheduled price checks
+Clerk/Bright Data ----------------------> signed API webhooks
+Celery beat ----------------------------> scheduled price checks
 ```
 
 The API owns product, watch, price-history, alert, and webhook data. Redis is
@@ -30,9 +31,10 @@ trust boundaries and data flows.
 ```text
 apps/api/              FastAPI, Celery, SQLAlchemy, and Alembic
 apps/web/              Next.js application
-docs/                  Architecture, operations, deployment, and legal drafts
-infra/compose.yaml     Local/full-stack containers
-infra/render.yaml      Example hosted backend blueprint
+docs/                  Architecture, operations, deployment, secrets, and legal drafts
+infra/compose.yaml     The full Docker Compose stack (dev and production)
+infra/Caddyfile        Reverse proxy and TLS termination (production profile)
+scripts/deploy.sh      One-command deploy/redeploy on the VPS
 .github/               CI, dependency updates, and ownership
 ```
 
@@ -44,15 +46,16 @@ infra/render.yaml      Example hosted backend blueprint
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/)
 - Docker Desktop with Compose v2
+- A [Clerk](https://clerk.com) application (a free development instance is
+  enough for local work) — Clerk sign-in is required; there is no demo mode
 
 On Windows, use PowerShell for the commands below. GNU Make is optional; the
 Makefile lists equivalent commands and works from WSL or Git Bash.
 
-## Local startup
+## Local development
 
-The following is the complete host-development workflow. It runs PostgreSQL,
-Redis, and Mailpit in Docker while keeping application processes on the host
-for fast reloads.
+The host-development workflow runs PostgreSQL, Redis, and Mailpit in Docker
+while keeping application processes on the host for fast reloads.
 
 1. Create local configuration:
 
@@ -61,13 +64,23 @@ for fast reloads.
    Copy-Item apps/web/.env.example apps/web/.env.local
    ```
 
-   The checked-in defaults use `NEXT_PUBLIC_DEMO_MODE=true`,
-   `PRICETRACKER_FAKE_AUTH_ENABLED=true`, and
-   `PRICETRACKER_FAKE_PROVIDER_ENABLED=true`. A blank
-   `PRICETRACKER_RESEND_API_KEY` selects non-delivering development email.
-   Clerk, Bright Data, and Resend credentials are not required.
+2. Fill in the Clerk **development instance** values in both files. You need
+   at minimum:
 
-2. Install dependencies from the repository root:
+   ```dotenv
+   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+   CLERK_SECRET_KEY=sk_test_...
+   CLERK_JWT_TEMPLATE_NAME=pricetracker-api
+   PRICETRACKER_CLERK_ISSUER=https://YOUR_INSTANCE.clerk.accounts.dev
+   PRICETRACKER_CLERK_AUDIENCE=pricetracker-api
+   ```
+
+   [docs/secrets.md](docs/secrets.md#clerk) walks through creating the Clerk
+   application and the `pricetracker-api` JWT template. Bright Data and Resend
+   credentials are **not** required for UI/API development; a blank
+   `PRICETRACKER_RESEND_API_KEY` selects non-delivering development email.
+
+3. Install dependencies from the repository root:
 
    ```powershell
    corepack enable
@@ -75,146 +88,58 @@ for fast reloads.
    uv sync --project apps/api --extra dev
    ```
 
-3. Start development infrastructure:
+4. Start development infrastructure:
 
    ```powershell
    docker compose --env-file .env -f infra/compose.yaml up -d postgres redis mailpit
    ```
 
-4. Apply migrations:
+5. Apply migrations:
 
    ```powershell
    uv run --project apps/api alembic -c apps/api/alembic.ini upgrade head
    ```
 
-5. Start each process in a separate terminal:
+6. Start the API and the web app in separate terminals:
 
    ```powershell
    uv run --project apps/api uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
    ```
 
    ```powershell
-   uv run --project apps/api celery -A app.workers.celery_app worker --loglevel=INFO
-   ```
-
-   ```powershell
-   uv run --project apps/api celery -A app.workers.celery_app beat --loglevel=INFO
-   ```
-
-   ```powershell
    pnpm --dir apps/web dev
    ```
 
-6. Open:
+7. Open:
 
    - Web: <http://localhost:3000>
    - API documentation: <http://localhost:8000/docs>
    - Mailpit: <http://localhost:8025>
 
-To run the entire stack from images instead, first configure `.env`, then use:
+### The worker and scheduler in development
+
+There is no fake price provider: triggering a snapshot performs a **paid Bright
+Data collection**. For everyday UI/API development simply do not run the worker
+or scheduler — new watches stay in a pending state until a worker processes
+them, and everything else works.
+
+When you are specifically testing the scraping pipeline, fill in the Bright
+Data variables (see [docs/secrets.md](docs/secrets.md#bright-data)), expose
+your local API with an HTTPS tunnel (Bright Data cannot call `localhost`):
 
 ```powershell
-docker compose --env-file .env -f infra/compose.yaml --profile dev up --build
+cloudflared tunnel --url http://localhost:8000
 ```
 
-Stop containers with:
+set `PRICETRACKER_BRIGHT_DATA_WEBHOOK_URL=https://TUNNEL_DOMAIN/api/v1/webhooks/bright-data`,
+then run:
 
 ```powershell
-docker compose --env-file .env -f infra/compose.yaml --profile dev down
+uv run --project apps/api celery -A app.workers.celery_app worker --loglevel=INFO
+uv run --project apps/api celery -A app.workers.celery_app beat --loglevel=INFO
 ```
 
-## Run for real (not demo)
-
-Demo mode is the default. To use real Clerk sign-in, Bright Data price checks,
-and Resend email alerts, follow the full guide:
-
-**[docs/go-live.md](docs/go-live.md)**
-
-Minimum flips after you have Clerk, Bright Data, and Resend credentials:
-
-```dotenv
-NEXT_PUBLIC_DEMO_MODE=false
-PRICETRACKER_FAKE_AUTH_ENABLED=false
-PRICETRACKER_FAKE_PROVIDER_ENABLED=false
-CLERK_JWT_TEMPLATE_NAME=pricetracker-api
-PRICETRACKER_CLERK_AUDIENCE=pricetracker-api
-```
-
-Then validate and rebuild (public Next.js flags are baked at image build time):
-
-```powershell
-python scripts/check_live_env.py
-docker compose --env-file .env -f infra/compose.yaml up -d --build
-```
-
-Bright Data and Clerk webhooks cannot reach `localhost`. Expose the API with a
-tunnel (Cloudflare Tunnel or ngrok) while testing locally.
-
-## Demo and fake mode
-
-Demo mode is intentionally explicit:
-
-- `NEXT_PUBLIC_DEMO_MODE=true` shows deterministic sample web data.
-- `PRICETRACKER_FAKE_AUTH_ENABLED=true` provides a development-only API
-  identity when configured by the backend.
-- `PRICETRACKER_FAKE_PROVIDER_ENABLED=true` prevents paid Bright Data
-  collections.
-- A blank `PRICETRACKER_RESEND_API_KEY` selects the backend's
-  non-delivering logging provider in development and tests.
-- Mailpit is included for local SMTP/template diagnostics at
-  <http://localhost:8025>; the current backend provider uses logging or Resend
-  directly and does not send through SMTP.
-
-When `NEXT_PUBLIC_DEMO_MODE=false`, the web app does not fall back to sample
-data. Missing Clerk/JWT configuration or API failures surface as errors instead.
-
-## External service setup
-
-### Clerk
-
-1. Create a Clerk application and copy its publishable and secret keys to
-   `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY`.
-2. Create a JWT template named `pricetracker-api` with
-   `"aud": "pricetracker-api"` and
-   `"email": "{{user.primary_email_address}}"`. Set
-   `CLERK_JWT_TEMPLATE_NAME=pricetracker-api`, then set the matching issuer and
-   audience in `PRICETRACKER_CLERK_ISSUER` and
-   `PRICETRACKER_CLERK_AUDIENCE`. Add exact browser origins to
-   `PRICETRACKER_CLERK_AUTHORIZED_PARTIES`.
-3. Create a webhook ending in `/api/v1/webhooks/clerk` and subscribe only to
-   events the API consumes (normally user create, update, and delete).
-4. Store the signing secret as `PRICETRACKER_CLERK_WEBHOOK_SECRET`.
-5. Add exact production and preview origins in Clerk and the JSON
-   `PRICETRACKER_ALLOWED_ORIGINS` list.
-
-The browser may use only the publishable key. The secret key and webhook secret
-belong in backend secret storage.
-
-### Bright Data
-
-1. Create the required retail datasets/collectors in Bright Data.
-2. Put their IDs in `PRICETRACKER_BRIGHT_DATA_AMAZON_DATASET_ID` and
-   `PRICETRACKER_BRIGHT_DATA_EBAY_DATASET_ID`.
-3. Store the API token as `PRICETRACKER_BRIGHT_DATA_API_TOKEN`.
-4. Configure completion callbacks to the public
-   `/api/v1/webhooks/bright-data` endpoint and use the same random value for
-   the provider signing configuration and
-   `PRICETRACKER_BRIGHT_DATA_WEBHOOK_SECRET`.
-5. Set `PRICETRACKER_BRIGHT_DATA_WEBHOOK_URL` to that public endpoint, turn
-   `PRICETRACKER_FAKE_PROVIDER_ENABLED=false`, and verify one low-volume
-   collection before enabling schedules.
-
-Bright Data can incur usage charges. Preserve per-user limits, retry caps, and
-minimum check intervals.
-
-### Resend
-
-1. Verify a sending domain in Resend.
-2. Create a restricted production API key and store it as
-   `PRICETRACKER_RESEND_API_KEY`.
-3. Set `PRICETRACKER_EMAIL_FROM` to an address on the verified domain.
-
-Do not use a test or unverified sender for production alerts.
+Start with a single test product and configure Bright Data budget alerts.
 
 ## Database migrations
 
@@ -231,8 +156,10 @@ uv run --project apps/api alembic -c apps/api/alembic.ini upgrade head
 uv run --project apps/api alembic -c apps/api/alembic.ini current
 ```
 
-Production migrations run as a one-off release/pre-deploy task, never in every
-API or worker replica. Back up the database before destructive migrations.
+In production, migrations run as a dedicated one-shot Compose service
+(`migrate`) invoked by `scripts/deploy.sh` before the stack restarts — never in
+every API or worker replica. Back up the database before destructive
+migrations.
 
 ## Quality checks
 
@@ -267,24 +194,28 @@ In non-production environments FastAPI serves:
 - OpenAPI JSON at `/openapi.json`
 
 All product routes are versioned under `/api/v1`. Health endpoints are
-unversioned (`/healthz` and `/readyz`) so platforms can probe them without
-authentication. Production documentation may be disabled; generate and publish
-the OpenAPI artifact from CI instead.
+unversioned (`/healthz` and `/readyz`) so monitors can probe them without
+authentication.
 
 ## Deployment
 
-- Frontend: Vercel, using the root `vercel.json`, or any Node container host.
-- API, worker, scheduler: separate processes built from
-  `apps/api/Dockerfile`.
-- Data: managed PostgreSQL and Redis with private networking and TLS.
-- Example backend blueprint: `infra/render.yaml`.
+The production deployment is a single VPS running the whole stack with Docker
+Compose:
 
-Follow [docs/deployment.md](docs/deployment.md) for environment promotion,
-migrations, backups, and rollback. Operational expectations are in
-[docs/operations.md](docs/operations.md).
+- **Caddy** terminates TLS for your domain (automatic Let's Encrypt) and is
+  the only service exposed to the internet.
+- **Next.js web**, **FastAPI api**, **Celery worker**, and **beat scheduler**
+  containers plus **PostgreSQL** and **Redis** run on the internal network.
+- Redeploying is one command on the VPS: `./scripts/deploy.sh` (or from your
+  machine: `make deploy VPS_HOST=user@your-vps`).
 
-For a complete account-by-account setup and launch checklist, follow
-[docs/go-live.md](docs/go-live.md).
+Follow the guides:
+
+- **[docs/deployment.md](docs/deployment.md)** — step-by-step VPS setup, first
+  deploy, redeploys, backups, and rollback.
+- **[docs/secrets.md](docs/secrets.md)** — how to obtain every value in
+  `.env` (Clerk, Bright Data, Resend, self-generated secrets).
+- [docs/operations.md](docs/operations.md) — operating the stack after launch.
 
 ## Security and privacy
 
@@ -295,8 +226,8 @@ For a complete account-by-account setup and launch checklist, follow
 - Restrict CORS to exact origins; do not use `*` with credentials.
 - Treat scraped URLs, price histories, email addresses, and alert preferences
   as user data. Minimize retention and redact logs.
-- Use managed secret stores, TLS, least-privilege service credentials, private
-  databases, dependency scanning, and tested backups.
+- Keep secrets in the VPS `.env` (mode 600) only, use TLS everywhere, keep
+  PostgreSQL/Redis bound to loopback, and test backups.
 - Report vulnerabilities through [SECURITY.md](SECURITY.md), not public issues.
 
 The privacy policy and terms in `docs/` are drafts and require legal review
@@ -309,6 +240,9 @@ before launch.
   keep `--project apps/api`.
 - **Port already allocated:** change the corresponding `*_PORT` value in
   `.env`; keep application URLs in sync.
+- **The web app throws `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is required`:**
+  fill the Clerk keys in `apps/web/.env.local` (host dev) or `.env` (Compose);
+  there is no demo fallback.
 - **API cannot connect from a container:** host development uses `localhost`,
   while Compose overrides database and Redis hosts to `postgres` and `redis`.
   Do not put `localhost` into container-only connection strings.
@@ -322,8 +256,9 @@ before launch.
   clock skew.
 - **Webhook signatures fail:** use the raw request body and the endpoint's
   current secret; reverse proxies must not rewrite the body.
-- **No price jobs run:** ensure Redis is reachable and both worker and scheduler
-  are running. Keep fake mode enabled while diagnosing provider credentials.
+- **No price jobs run:** ensure Redis is reachable and both worker and
+  scheduler are running, and that the Bright Data credentials and webhook URL
+  are configured.
 - **No local email appears:** with a blank Resend key, the backend deliberately
   logs suppressed delivery instead of sending. Mailpit does not receive those
   messages unless an SMTP adapter is added.
@@ -332,4 +267,3 @@ before launch.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). PriceTracker is available under the
 [MIT License](LICENSE).
-

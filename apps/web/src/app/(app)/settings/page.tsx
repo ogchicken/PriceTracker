@@ -1,8 +1,7 @@
-import { ExternalLinkIcon, InfoIcon, ShieldCheckIcon, UserRoundIcon } from "lucide-react";
+import { ExternalLinkIcon, ShieldCheckIcon, UserRoundIcon } from "lucide-react";
 import Link from "next/link";
 
 import { PreferencesForm } from "@/components/preferences-form";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,15 +14,12 @@ import {
   CardTitle
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/feedback";
-import { getPreferences, isDemoMode } from "@/lib/api/server";
+import { getPreferences } from "@/lib/api/server";
 
 export const metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
-  const result = await getPreferences();
-  const clerkEnabled = Boolean(
-    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY
-  );
+  const preferences = await getPreferences();
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-8">
@@ -35,15 +31,7 @@ export default async function SettingsPage() {
         </p>
       </section>
 
-      {result.notice ? (
-        <Alert variant="warning">
-          <InfoIcon aria-hidden="true" />
-          <AlertTitle>Using sample preferences</AlertTitle>
-          <AlertDescription>{result.notice}</AlertDescription>
-        </Alert>
-      ) : null}
-
-      <PreferencesForm preferences={result.data} />
+      <PreferencesForm preferences={preferences} />
 
       <Card>
         <CardHeader>
@@ -62,25 +50,19 @@ export default async function SettingsPage() {
             <div className="flex flex-col gap-1">
               <p className="text-sm font-medium">Authentication status</p>
               <p className="text-sm text-muted-foreground">
-                {clerkEnabled
-                  ? "Clerk is connected for this deployment."
-                  : "Demo access is enabled; Clerk is not configured."}
+                Clerk is connected for this deployment.
               </p>
             </div>
-            <Badge variant={clerkEnabled ? "success" : "secondary"}>
-              {clerkEnabled ? "Connected" : "Demo mode"}
-            </Badge>
+            <Badge variant="success">Connected</Badge>
           </div>
           <div className="flex flex-col justify-between gap-3 rounded-lg bg-muted p-4 sm:flex-row sm:items-center">
             <div className="flex flex-col gap-1">
               <p className="text-sm font-medium">Data source</p>
               <p className="text-sm text-muted-foreground">
-                {isDemoMode
-                  ? "Sample data is used and changes are not persisted."
-                  : "Your workspace reads and writes through the server API."}
+                Your workspace reads and writes through the server API.
               </p>
             </div>
-            <Badge variant="outline">{isDemoMode ? "Sample" : "API"}</Badge>
+            <Badge variant="outline">API</Badge>
           </div>
         </CardContent>
         <CardFooter className="flex-wrap">

@@ -7,7 +7,6 @@ import { z } from "zod";
 import {
   createItem,
   deleteItem,
-  isDemoMode,
   savePreferences,
   updateItem
 } from "@/lib/api/server";
@@ -50,10 +49,6 @@ const preferencesSchema = z.object({
 });
 
 async function requireAuthenticatedUser() {
-  if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || !process.env.CLERK_SECRET_KEY) {
-    if (!isDemoMode) throw new Error("Authentication is not configured.");
-    return "demo-user";
-  }
   const { userId } = await auth();
   if (!userId) throw new Error("You must be signed in to make this change.");
   return userId;
@@ -75,9 +70,7 @@ export async function createTrackedItemAction(input: unknown): Promise<ActionRes
     revalidatePath("/dashboard");
     return {
       ok: true,
-      message: isDemoMode
-        ? "Demo item accepted. This preview does not save changes."
-        : "Item added. Price tracking has started.",
+      message: "Item added. Price tracking has started.",
       id: item?.id
     };
   } catch (error) {
@@ -103,9 +96,7 @@ export async function updateTrackedItemAction(input: unknown): Promise<ActionRes
     revalidatePath("/dashboard");
     return {
       ok: true,
-      message: isDemoMode
-        ? "Demo settings updated for this preview."
-        : "Tracking settings updated."
+      message: "Tracking settings updated."
     };
   } catch (error) {
     return {
@@ -122,9 +113,7 @@ export async function deleteTrackedItemAction(id: string): Promise<ActionResult>
     revalidatePath("/dashboard");
     return {
       ok: true,
-      message: isDemoMode
-        ? "Demo delete simulated. Sample data will return on refresh."
-        : "Item removed from your tracker."
+      message: "Item removed from your tracker."
     };
   } catch (error) {
     return {
@@ -145,9 +134,7 @@ export async function savePreferencesAction(input: unknown): Promise<ActionResul
     revalidatePath("/settings");
     return {
       ok: true,
-      message: isDemoMode
-        ? "Demo preferences applied for this preview."
-        : "Preferences saved."
+      message: "Preferences saved."
     };
   } catch (error) {
     return {

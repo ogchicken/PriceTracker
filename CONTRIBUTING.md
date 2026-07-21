@@ -5,11 +5,11 @@ for user data and paid-provider usage.
 
 ## Development setup
 
-Follow the exact workflow in [README.md](README.md). Keep
-`NEXT_PUBLIC_DEMO_MODE=true`, `PRICETRACKER_FAKE_AUTH_ENABLED=true`,
-`PRICETRACKER_FAKE_PROVIDER_ENABLED=true`, and the Resend key blank unless a
-test explicitly requires an integration. Never use production credentials or
-real customer data in development.
+Follow the exact workflow in [README.md](README.md). You need a Clerk
+**development instance** (free) for sign-in; keep the Resend key blank so
+email stays non-delivering, and only run the Celery worker/scheduler when a
+change explicitly needs the Bright Data pipeline (collections cost money).
+Never use production credentials or real customer data in development.
 
 ## Workflow
 

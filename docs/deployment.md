@@ -1,204 +1,388 @@
+# Deployment: single VPS with Docker Compose
+
+This guide takes you from a fresh VPS to a running, HTTPS-secured PriceTracker
+deployment, and covers redeploys, backups, and rollback. Obtaining the secrets
+referenced here is covered step by step in [secrets.md](secrets.md).
+
+## 1. Topology
+
+Everything runs on one VPS in one Docker Compose project:
+
+```text
+                         Internet
+                            |
+                    443/80 (only public ports)
+                            v
+                    +---------------+
+                    | caddy         |  TLS via Let's Encrypt for $DOMAIN
+                    +---------------+
+                     |            |
+        (default)    v            v   /api/*, /healthz, /readyz
+              +-----------+  +-----------+
+              | web :3000 |  | api :8000 |
+              +-----------+  +-----------+
+                     |         |     |
+                     |         v     v
+                     |  +----------+ +---------+
+                     +->| postgres | |  redis  |
+                        +----------+ +---------+
+                              ^          ^
+                        +-----------+ +-----------+
+                        |  worker   | | scheduler |
+                        +-----------+ +-----------+
+```
+
+- Caddy is the only service listening on public interfaces (80/443). It
+  requests and renews the TLS certificate automatically.
+- Requests to `/api/*`, `/healthz`, and `/readyz` go to FastAPI; everything
+  else goes to Next.js. Clerk and Bright Data webhooks arrive at
+  `https://$DOMAIN/api/v1/webhooks/...`.
+- PostgreSQL, Redis, the API, and the web server publish ports only on the
+  VPS loopback (`127.0.0.1`) for debugging; they are not reachable from the
+  internet.
+- `/metrics` (Prometheus) is intentionally not routed publicly; read it on the
+  VPS via `curl http://127.0.0.1:8000/metrics`.
+- Migrations run through the one-shot `migrate` service, invoked by the deploy
+  script before the stack restarts.
+- One `.env` file at the repository root configures everything.
+
+## 2. Prerequisites
+
+- A **domain** (or subdomain) you control, e.g. `app.example.com`.
+- A **VPS** running Ubuntu 24.04 LTS with at least 2 GB RAM (4 GB is
+  comfortable; the web image build alone wants ~1 GB free) and 20+ GB disk.
+  Any provider works (Hetzner, DigitalOcean, Vultr, OVH, ...).
+- SSH access to the VPS as root or a sudo user.
+- Accounts and credentials for **Clerk**, **Bright Data**, and **Resend** —
+  collect them with [secrets.md](secrets.md) before the first deploy.
+
+## 3. Point DNS at the VPS
+
+At your DNS provider, create records for your chosen domain:
+
+| Type | Name | Value |
+| --- | --- | --- |
+| A | `app` (or `@`) | the VPS IPv4 address |
+| AAAA | `app` (or `@`) | the VPS IPv6 address (if it has one) |
+
+Use a modest TTL (300–3600 s). Verify propagation before the first deploy —
+Let's Encrypt issuance fails until the domain resolves to the VPS:
+
+```bash
+dig +short app.example.com
+```
+
+## 4. Prepare the server
+
+SSH in as root (or your provider's default sudo user):
+
+```bash
+ssh root@YOUR_VPS_IP
+```
+
+Create a deploy user with sudo and key-based SSH:
+
+```bash
+adduser --disabled-password --gecos "" deploy
+usermod -aG sudo deploy
+rsync -a ~/.ssh/ /home/deploy/.ssh/
+chown -R deploy:deploy /home/deploy/.ssh
+echo "deploy ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/deploy
+```
+
+Update packages and enable automatic security updates:
+
+```bash
+apt-get update && apt-get -y upgrade
+apt-get -y install unattended-upgrades
+dpkg-reconfigure -f noninteractive unattended-upgrades
+```
+
+Configure the firewall — SSH plus HTTP/HTTPS only:
+
+```bash
+ufw allow OpenSSH
+ufw allow 80/tcp
+ufw allow 443/tcp
+ufw --force enable
+ufw status
+```
+
+Optionally harden SSH (`/etc/ssh/sshd_config`): set
+`PasswordAuthentication no` and `PermitRootLogin no`, then
+`systemctl restart ssh`. Make sure key-based login as `deploy` works first.
+
+From here on, work as the deploy user: `ssh deploy@YOUR_VPS_IP`.
+
+## 5. Install Docker Engine and the Compose plugin
+
+Use Docker's official repository (Ubuntu's packaged docker is outdated):
+
+```bash
+sudo apt-get update
+sudo apt-get -y install ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+  https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+sudo apt-get -y install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+```
+
+Let the deploy user run docker without sudo, then re-login:
+
+```bash
+sudo usermod -aG docker $USER
+exit
+```
+
+```bash
+ssh deploy@YOUR_VPS_IP
+docker version && docker compose version
+```
+
+## 6. Clone the repository
+
+```bash
+sudo mkdir -p /opt/pricetracker
+sudo chown $USER:$USER /opt/pricetracker
+git clone https://github.com/YOUR_GITHUB_USER/PriceTracker.git /opt/pricetracker
+cd /opt/pricetracker
+```
+
+For a private repository, use a fine-grained access token or a read-only
+deploy key.
+
+## 7. Create the production `.env`
+
+```bash
+cp .env.example .env
+chmod 600 .env
+nano .env
+```
+
+Work through the file top to bottom — every secret's origin is documented in
+[secrets.md](secrets.md). The production values that differ from the local
+defaults:
+
+```dotenv
 # Deployment
+COMPOSE_PROFILES=prod
+DOMAIN=app.example.com
+ACME_EMAIL=you@example.com
 
-This guide is provider-neutral. The recommended split is Vercel for the
-Next.js frontend and a container platform for the API, workers, and scheduler,
-with managed PostgreSQL and Redis. `infra/render.yaml` is an example, not a
-complete production policy.
+# API runtime
+PRICETRACKER_ENVIRONMENT=production
+PRICETRACKER_DEBUG=false
+PRICETRACKER_ALLOWED_ORIGINS=["https://app.example.com"]
+PRICETRACKER_FRONTEND_BASE_URL=https://app.example.com
 
-## Production topology
+# Web — production Clerk instance keys (pk_live_/sk_live_)
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_...
+CLERK_SECRET_KEY=sk_live_...
+API_BASE_URL=http://api:8000
 
-- Deploy `apps/web` to Vercel or run `apps/web/Dockerfile`.
-- Build one immutable backend image from `apps/api/Dockerfile`.
-- Run that image as three process types:
-  - API: `uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers`
-  - worker: `celery -A app.workers.celery_app worker --loglevel=INFO`
-  - scheduler: `celery -A app.workers.celery_app beat --loglevel=INFO --pidfile=/tmp/celerybeat.pid --schedule=/tmp/celerybeat-schedule`
-- Use managed PostgreSQL and Redis on private networks with encryption in
-  transit and at rest.
-- Run exactly one scheduler per environment.
+# PostgreSQL — generated password (openssl rand -hex 24)
+POSTGRES_PASSWORD=GENERATED_VALUE
 
-Pin deployed images by digest or commit SHA. Do not deploy from mutable
-`latest` tags.
+# Clerk verification
+PRICETRACKER_CLERK_ISSUER=https://clerk.app.example.com        # or ...clerk.accounts.dev
+PRICETRACKER_CLERK_AUTHORIZED_PARTIES=["https://app.example.com"]
+PRICETRACKER_CLERK_JWKS_URL=https://YOUR_ISSUER/.well-known/jwks.json
+PRICETRACKER_CLERK_WEBHOOK_SECRET=whsec_pending                # added after step 9
 
-## Environment configuration
+# Bright Data
+PRICETRACKER_BRIGHT_DATA_API_TOKEN=...
+PRICETRACKER_BRIGHT_DATA_AMAZON_DATASET_ID=gd_...
+PRICETRACKER_BRIGHT_DATA_EBAY_DATASET_ID=gd_...
+PRICETRACKER_BRIGHT_DATA_WEBHOOK_SECRET=GENERATED_VALUE        # openssl rand -hex 32
+PRICETRACKER_BRIGHT_DATA_WEBHOOK_URL=https://app.example.com/api/v1/webhooks/bright-data
 
-Start from `.env.example`, but store values in each platform's encrypted
-environment settings rather than uploading an `.env` file.
+# Resend
+PRICETRACKER_RESEND_API_KEY=re_...
+PRICETRACKER_EMAIL_FROM="PriceTracker <alerts@example.com>"
+```
 
-Frontend build/runtime values:
+Notes:
 
-- `API_BASE_URL` (server only)
-- `NEXT_PUBLIC_DEMO_MODE=false`
-- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
-- `CLERK_SECRET_KEY`
-- `CLERK_JWT_TEMPLATE_NAME=pricetracker-api`
+- `API_BASE_URL` stays `http://api:8000` — it is the internal address the web
+  container uses to reach the API on the Compose network.
+- Keep the `PRICETRACKER_DATABASE_URL`/`PRICETRACKER_REDIS_URL` lines from the
+  example as-is; Compose overrides the hosts per service, and the API refuses
+  `localhost` data URLs in production anyway.
+- The Clerk webhook secret does not exist until step 9; leave the placeholder,
+  finish the first deploy, then fill it in and redeploy.
 
-Backend values:
+Validate before deploying (the deploy script also runs this):
 
-- runtime: `PRICETRACKER_ENVIRONMENT=production`,
-  process-specific `PRICETRACKER_SERVICE_ROLE`, `PRICETRACKER_DEBUG=false`,
-  `PRICETRACKER_LOG_LEVEL`;
-- data: `PRICETRACKER_DATABASE_URL`, `PRICETRACKER_REDIS_URL`,
-  `PRICETRACKER_CELERY_BROKER_URL`,
-  `PRICETRACKER_CELERY_RESULT_BACKEND`;
-- URLs/security: `PRICETRACKER_FRONTEND_BASE_URL` and the exact JSON
-  `PRICETRACKER_ALLOWED_ORIGINS` list;
-- Clerk: `PRICETRACKER_CLERK_ISSUER`,
-  `PRICETRACKER_CLERK_AUDIENCE`,
-  `PRICETRACKER_CLERK_AUTHORIZED_PARTIES`, and
-  `PRICETRACKER_CLERK_WEBHOOK_SECRET`;
-- Bright Data: `PRICETRACKER_FAKE_PROVIDER_ENABLED=false`,
-  `PRICETRACKER_BRIGHT_DATA_API_TOKEN`, Amazon/eBay dataset IDs, and webhook
-  URL/secret;
-- email: `PRICETRACKER_RESEND_API_KEY` and `PRICETRACKER_EMAIL_FROM`;
-- limits and observability values from `.env.example`.
+```bash
+python3 scripts/check_live_env.py --env-file .env
+```
 
-Use different credentials, Clerk instances, databases, Redis instances, and
-webhook endpoints for preview/staging and production. Preview environments
-should normally retain Bright Data fake mode and non-delivery email.
+## 8. First deploy
 
-## Vercel frontend
+```bash
+cd /opt/pricetracker
+./scripts/deploy.sh
+```
 
-The root `vercel.json` supports importing the repository root as a Vercel
-project. It installs the workspace and builds `apps/web`.
+The script, in order: pulls the latest commit (`git pull --ff-only`),
+validates `.env`, builds all images, applies database migrations via the
+one-shot `migrate` service, starts the stack, waits for the API to report
+ready on the loopback port, and finally checks `https://$DOMAIN/healthz`.
 
-1. Import the repository and keep the project root at the repository root.
-2. Select pnpm and Node.js 22.
-3. Add frontend variables separately for Preview and Production.
-4. Set server-only `API_BASE_URL` to the corresponding public API origin and
-   set `NEXT_PUBLIC_DEMO_MODE=false`.
-5. Add each Vercel origin to Clerk and backend
-   `PRICETRACKER_ALLOWED_ORIGINS`.
-6. Deploy a preview and verify authentication and API calls before promoting.
+The first run builds every image and takes several minutes. Watch certificate
+issuance if the final public check warns:
 
-`NEXT_PUBLIC_*` values are embedded at build time. Changing them requires a new
-frontend deployment. Never place secret keys in that namespace.
+```bash
+docker compose --env-file .env -f infra/compose.yaml logs -f caddy
+```
 
-Alternatively, set Vercel's project root to `apps/web` and remove/override the
-root build settings in the Vercel dashboard.
+Successful issuance logs `certificate obtained successfully`. Then verify:
 
-## Container backend
+```bash
+curl https://app.example.com/healthz    # {"status":"ok"}
+curl https://app.example.com/readyz     # {"status":"ok", ...}
+docker compose --env-file .env -f infra/compose.yaml ps   # all services healthy
+```
 
-The backend image must include application code, locked dependencies, and
-Alembic migrations. The API health endpoints are:
+> Never run a bare `docker compose up -d` on a fresh clone — migrations only
+> run through `scripts/deploy.sh` (or explicitly via
+> `docker compose --env-file .env -f infra/compose.yaml run --rm migrate`).
 
-- `/healthz` for process liveness;
-- `/readyz` for dependency readiness.
+> **Running Compose by hand:** the `docker compose` commands throughout this
+> guide pass `--env-file .env`, but profiled services (`caddy` under the `prod`
+> profile) only appear when `COMPOSE_PROFILES` is active in your shell.
+> `scripts/deploy.sh` exports it for you; for manual commands, export it to
+> match `.env` first — `export COMPOSE_PROFILES=prod` — otherwise
+> `... ps` / `... logs caddy` won't see the proxy.
 
-Expose only the API. Worker and scheduler processes require outbound access to
-PostgreSQL, Redis, Bright Data, Resend, and observability endpoints but do not
-need public ingress.
+## 9. Wire the webhooks (needs the live HTTPS domain)
 
-Recommended process lifecycle:
+Now that `https://$DOMAIN` exists, connect the providers (dashboard
+walkthroughs in [secrets.md](secrets.md)):
 
-1. Stop accepting new work on termination.
-2. Allow API requests and Celery tasks a bounded grace period.
-3. Terminate after the platform timeout.
-4. Retry only idempotent tasks.
+1. **Clerk webhook** — in the Clerk Dashboard add an endpoint
+   `https://app.example.com/api/v1/webhooks/clerk` subscribed to
+   `user.created`, `user.updated`, `user.deleted`. Copy the generated signing
+   secret (`whsec_...`) into `PRICETRACKER_CLERK_WEBHOOK_SECRET` in `.env`,
+   then redeploy: `./scripts/deploy.sh`.
+2. **Bright Data** — nothing to configure in their dashboard for callbacks:
+   the application passes `PRICETRACKER_BRIGHT_DATA_WEBHOOK_URL` and the
+   shared secret with every triggered snapshot. Just confirm the URL in
+   `.env` is `https://app.example.com/api/v1/webhooks/bright-data`.
 
-Scale API replicas on request latency/concurrency. Scale workers on queue age
-and depth while enforcing provider-spend and database-connection ceilings.
-Keep scheduler replicas fixed at one.
+## 10. Launch verification
 
-## Release procedure
+Walk the product end to end:
 
-1. Confirm CI is green and the image corresponds to the intended commit.
-2. Review migrations for locks, rewrites, backfills, and downgrade behavior.
-3. Take or verify a recoverable database backup for destructive changes.
-4. Build and push the image once.
-5. Run `alembic upgrade head` as a one-off pre-deploy/release command.
-6. Deploy API replicas and wait for readiness.
-7. Deploy workers.
-8. Replace the single scheduler.
-9. Deploy the web app.
-10. Verify health, authentication, one synthetic watch, queue age, provider
-    usage, and email delivery.
+1. Open `https://app.example.com`, sign up through Clerk, and land on the
+   dashboard.
+2. Add one supported Amazon or eBay (fixed-price) product with a target price.
+3. Watch the worker trigger a collection:
 
-Do not run migrations automatically in every API/worker startup command;
-concurrent migration runners can race and slow rollouts.
+   ```bash
+   docker compose --env-file .env -f infra/compose.yaml logs -f worker
+   ```
 
-## Migration strategy
+4. Confirm Bright Data calls back (api logs show the webhook) and the item
+   shows a real price and title.
+5. Set a target above the current price and confirm one in-app notification
+   and one Resend email arrive when it is reached.
+6. Confirm Bright Data budget alerts are configured — every collection costs
+   money.
 
-Prefer expand/migrate/contract:
+## 11. Redeploying during development
 
-1. **Expand:** add nullable columns, new tables, or compatible indexes.
-2. **Migrate:** deploy code that reads/writes both forms and backfill in
-   resumable batches.
-3. **Contract:** after all instances use the new form, remove old fields in a
-   later release.
+Push to `main`, then:
 
-Create large PostgreSQL indexes concurrently where migration tooling and
-transaction boundaries support it. Set and test statement/lock timeouts. Never
-edit migration files that have reached a shared environment.
+```bash
+ssh deploy@YOUR_VPS_IP '/opt/pricetracker/scripts/deploy.sh'
+```
 
-## Backups and restore
+or from your machine with Make:
 
-Use provider-managed point-in-time recovery for PostgreSQL and retain periodic
-independent snapshots according to business recovery objectives. At minimum:
+```bash
+make deploy VPS_HOST=deploy@YOUR_VPS_IP
+```
 
-- monitor backup completion and retention;
-- encrypt backups and restrict restore permissions;
-- document the recovery point objective (RPO) and recovery time objective
-  (RTO);
-- perform a restore drill into an isolated environment at least quarterly;
-- verify schema revision, row counts, application login, and representative
-  price history after restore.
+The script is idempotent — run it as often as you like. Notes:
 
-Redis is not the business-record backup. After Redis loss, restore queue
-service and run a controlled reconciliation that re-enqueues due database
-records.
+- `NEXT_PUBLIC_*` values are baked into the web image at build time. The
+  deploy script always rebuilds, so changing the publishable key just needs a
+  normal redeploy.
+- Migrations run before the new containers start; write them
+  expand-then-contract so the previous code keeps working during the brief
+  overlap.
+- Old images are pruned automatically at the end of each deploy.
 
-Before a planned destructive migration, record the backup identifier and test
-that it is restorable. Database exports containing user data must follow the
-same retention and access controls as production.
+## 12. Backups
 
-## Rollback
+Dump PostgreSQL from the running container:
 
-For an application regression:
+```bash
+docker compose --env-file .env -f infra/compose.yaml exec -T postgres \
+  pg_dump -U pricetracker -d pricetracker -F c > /opt/backups/pricetracker-$(date +%F).dump
+```
 
-1. Pause the scheduler if new jobs could worsen the issue.
-2. Redeploy the previous immutable API/worker image.
-3. Restore the previous frontend deployment.
-4. Reconcile queued/running jobs and verify idempotency records.
+Automate it with cron (`crontab -e`):
 
-Prefer a forward-fix for schema changes. Run `alembic downgrade` only when the
-reviewed downgrade is data-preserving, no newer application writes depend on
-the schema, and the migration owner has approved it. Otherwise deploy
-compatibility code, restore from backup if data is corrupted, and complete a
-forward migration.
+```cron
+15 3 * * * mkdir -p /opt/backups && docker compose --env-file /opt/pricetracker/.env -f /opt/pricetracker/infra/compose.yaml exec -T postgres pg_dump -U pricetracker -d pricetracker -F c > /opt/backups/pricetracker-$(date +\%F).dump 2>> /opt/backups/backup.log
+```
 
-Credential or signing-key rollback means rotation, not restoration of an
-exposed value.
+Copy dumps off the VPS (object storage, `rclone`, or your provider's snapshot
+feature) — a backup on the same disk is not a backup. Test restores
+periodically:
 
-## Domains and webhooks
+```bash
+docker compose --env-file .env -f infra/compose.yaml exec -T postgres \
+  pg_restore -U pricetracker -d pricetracker --clean --if-exists < /opt/backups/pricetracker-2026-07-21.dump
+```
 
-Use HTTPS everywhere. Configure:
+Redis holds only queue/coordination state and needs no backup; the
+`caddy-data` volume holds certificates and re-issues automatically if lost.
 
-- Clerk webhook: `https://api.example.com/api/v1/webhooks/clerk`
-- Bright Data webhook and `PRICETRACKER_BRIGHT_DATA_WEBHOOK_URL`:
-  `https://api.example.com/api/v1/webhooks/bright-data`
-- frontend server API URL: `API_BASE_URL=https://api.example.com`
-- backend origins:
-  `PRICETRACKER_FRONTEND_BASE_URL=https://app.example.com` and an exact JSON
-  `PRICETRACKER_ALLOWED_ORIGINS` allowlist.
+## 13. Rollback
 
-Rotate webhook secrets during a controlled overlap window if the provider
-supports multiple active secrets. Verify signatures before returning success.
+To roll back to a known-good commit:
 
-## Render example
+```bash
+cd /opt/pricetracker
+git log --oneline -10          # find the good commit
+git checkout GOOD_COMMIT_SHA
+docker compose --env-file .env -f infra/compose.yaml build
+docker compose --env-file .env -f infra/compose.yaml up -d --remove-orphans
+```
 
-`infra/render.yaml` illustrates managed PostgreSQL/Redis plus API, worker, and
-scheduler services. Before using it:
+(`deploy.sh` is not used here because `git pull --ff-only` would move you
+forward again. Return to normal deploys with `git checkout main`.)
 
-- replace placeholder plans/regions and secret values;
-- confirm the current Render Blueprint schema and PostgreSQL version support;
-- confirm Render linked `PRICETRACKER_DATABASE_URL` to the managed database;
-  the application normalizes Render's PostgreSQL scheme to `asyncpg`;
-- configure a one-off migration/pre-deploy command;
-- set public `API_URL`, `WEB_URL`, webhook URLs, and CORS origins;
-- connect the web project in Vercel;
-- add alerts, backups, autoscaling limits, and a custom API domain.
+Caveat: rolling back code does not roll back applied migrations. If the bad
+release included a destructive migration, restore the database from the latest
+backup instead of downgrading in place.
 
-The complete account setup, environment values, webhook sequence, and
-verification checklist are in [go-live.md](go-live.md).
+## 14. Troubleshooting
 
+- **Certificate issuance fails / public health check warns:** confirm DNS
+  resolves to the VPS (`dig +short $DOMAIN`), ports 80/443 are open
+  (`sudo ufw status`), and nothing else binds them (`sudo ss -tlnp | grep -E ':80|:443'`).
+  Then watch `... logs -f caddy`. Let's Encrypt rate-limits repeated failures —
+  fix DNS before retrying repeatedly.
+- **502 from Caddy:** the target container is unhealthy. Check
+  `... ps` and the failing service's logs (`... logs api`, `... logs web`).
+- **API stuck unhealthy after deploy:** usually production config validation —
+  `... logs api` prints the exact missing/invalid setting (the same rules
+  `check_live_env.py` enforces).
+- **Migration step fails:** the stack keeps running the previous version.
+  Inspect the `migrate` output printed by the deploy script, fix the
+  migration, redeploy.
+- **Port conflicts on the VPS:** another service owns 80/443 (often a stray
+  nginx/apache). Stop and disable it, or change the published ports.
+- **Web image build runs out of memory:** add swap
+  (`sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile`)
+  or build on a bigger box.
+- **Webhook signature failures:** confirm the secrets in `.env` match the
+  provider dashboards and redeploy; Caddy passes bodies through unmodified.

@@ -1,27 +1,11 @@
 import Link from "next/link";
-import { ArrowLeftIcon, LockKeyholeIcon } from "lucide-react";
+import { ArrowLeftIcon } from "lucide-react";
 
 import { Brand } from "@/components/brand";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle
-} from "@/components/ui/card";
 
-export function AuthShell({
-  mode,
-  children
-}: {
-  mode: "sign-in" | "sign-up";
-  children?: React.ReactNode;
-}) {
-  const signingIn = mode === "sign-in";
+export function AuthShell({ children }: { children: React.ReactNode }) {
   return (
     <main className="grid min-h-screen lg:grid-cols-[0.9fr_1.1fr]">
       <section className="hidden flex-col justify-between bg-foreground p-12 text-background lg:flex">
@@ -47,38 +31,7 @@ export function AuthShell({
             </Link>
           </Button>
 
-          {children ?? (
-            <Card>
-              <CardHeader>
-                <span className="mb-2 flex size-11 items-center justify-center rounded-lg bg-accent text-accent-foreground">
-                  <LockKeyholeIcon aria-hidden="true" className="size-5" />
-                </span>
-                <CardTitle asChild>
-                  <h1>{signingIn ? "Welcome back" : "Create your workspace"}</h1>
-                </CardTitle>
-                <CardDescription>
-                  Authentication is not connected in this environment.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Alert variant="warning">
-                  <AlertTitle>Demo mode is active</AlertTitle>
-                  <AlertDescription>
-                    You can explore the full product without entering credentials. Configure
-                    Clerk environment variables to enable account sign-in.
-                  </AlertDescription>
-                </Alert>
-              </CardContent>
-              <CardFooter className="flex-col items-stretch">
-                <Button asChild>
-                  <Link href="/dashboard">Continue to demo dashboard</Link>
-                </Button>
-                <p className="text-center text-xs text-muted-foreground">
-                  Demo changes are simulated and are not persisted.
-                </p>
-              </CardFooter>
-            </Card>
-          )}
+          {children}
         </div>
       </section>
     </main>

@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.models import (
-    AvailabilityStatus,
     PriceObservation,
     ProviderJob,
     ProviderJobState,
@@ -127,50 +126,6 @@ async def trigger_snapshot(
     job.external_job_id = snapshot.snapshot_id
     job.state = ProviderJobState.RUNNING
     job.attempts = 1
-    job.response_data = {"fake": snapshot.fake}
-    if snapshot.fake:
-        for product in products:
-            watch_currency = await session.scalar(
-                select(Watch.currency)
-                .where(
-                    Watch.product_id == product.id,
-                    Watch.status == WatchStatus.ACTIVE,
-                )
-                .limit(1)
-            )
-            currency = watch_currency or product.currency or "USD"
-            item_price_minor = 2_500 + (product.id.int % 25_000)
-            observation = PriceObservation(
-                product_id=product.id,
-                provider_job_id=job.id,
-                price_minor=item_price_minor,
-                item_price_minor=item_price_minor,
-                shipping_price_minor=0,
-                currency=currency,
-                availability=AvailabilityStatus.IN_STOCK,
-                observed_at=now,
-                source=ProviderName.BRIGHT_DATA,
-                raw_data={"fake": True, "external_id": product.external_id},
-            )
-            session.add(observation)
-            await session.flush()
-            product.title = product.title or f"Demo {product.store.value.title()} product"
-            product.item_price_minor = item_price_minor
-            product.shipping_price_minor = 0
-            product.current_price_minor = item_price_minor
-            product.currency = currency
-            product.availability = AvailabilityStatus.IN_STOCK
-            product.last_checked_at = now
-            product.consecutive_failures = 0
-            product.lease_until = None
-            product.next_check_at = next_check_time(product.id, settings, now=now)
-            await evaluate_watches_for_observation(
-                session,
-                observation,
-                default_rearm_percent=settings.alert_rearm_percent,
-            )
-        job.state = ProviderJobState.SUCCEEDED
-        job.completed_at = now
     return job
 
 

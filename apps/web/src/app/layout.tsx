@@ -41,12 +41,9 @@ const themeScript = `
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-  const content = (
-    <>
-      {children}
-      <Toaster position="bottom-right" richColors closeButton />
-    </>
-  );
+  if (!publishableKey) {
+    throw new Error("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is required.");
+  }
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -54,11 +51,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
-        {publishableKey ? (
-          <ClerkProvider publishableKey={publishableKey}>{content}</ClerkProvider>
-        ) : (
-          content
-        )}
+        <ClerkProvider publishableKey={publishableKey}>
+          {children}
+          <Toaster position="bottom-right" richColors closeButton />
+        </ClerkProvider>
       </body>
     </html>
   );

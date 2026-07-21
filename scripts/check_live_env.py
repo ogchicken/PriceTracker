@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate .env for real (non-demo) PriceTracker operation."""
+"""Validate .env before a production deploy."""
 
 from __future__ import annotations
 
@@ -10,17 +10,18 @@ from pathlib import Path
 
 
 REQUIRED = [
-    "NEXT_PUBLIC_DEMO_MODE",
+    "COMPOSE_PROFILES",
+    "DOMAIN",
+    "ACME_EMAIL",
     "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
     "CLERK_SECRET_KEY",
     "CLERK_JWT_TEMPLATE_NAME",
-    "API_BASE_URL",
-    "PRICETRACKER_FAKE_AUTH_ENABLED",
-    "PRICETRACKER_FAKE_PROVIDER_ENABLED",
+    "PRICETRACKER_ENVIRONMENT",
+    "PRICETRACKER_FRONTEND_BASE_URL",
+    "PRICETRACKER_ALLOWED_ORIGINS",
     "PRICETRACKER_CLERK_ISSUER",
     "PRICETRACKER_CLERK_AUDIENCE",
     "PRICETRACKER_CLERK_AUTHORIZED_PARTIES",
-    "PRICETRACKER_CLERK_JWKS_URL",
     "PRICETRACKER_CLERK_WEBHOOK_SECRET",
     "PRICETRACKER_BRIGHT_DATA_API_TOKEN",
     "PRICETRACKER_BRIGHT_DATA_AMAZON_DATASET_ID",
@@ -29,7 +30,13 @@ REQUIRED = [
     "PRICETRACKER_BRIGHT_DATA_WEBHOOK_SECRET",
     "PRICETRACKER_RESEND_API_KEY",
     "PRICETRACKER_EMAIL_FROM",
+    "POSTGRES_PASSWORD",
 ]
+
+PLACEHOLDER_PUBLISHABLE_KEYS = {
+    "pk_live_Y2xlcmsuZXhhbXBsZS5jb20k",
+    "pk_test_Y2xlcmsuZXhhbXBsZS5jb20k",
+}
 
 
 def parse_env(path: Path) -> dict[str, str]:
@@ -64,29 +71,42 @@ def main() -> int:
         if not env.get(key):
             errors.append(f"{key} is missing or empty")
 
-    if env.get("NEXT_PUBLIC_DEMO_MODE", "true").lower() != "false":
-        errors.append("NEXT_PUBLIC_DEMO_MODE must be false")
-    if env.get("PRICETRACKER_FAKE_AUTH_ENABLED", "true").lower() != "false":
-        errors.append("PRICETRACKER_FAKE_AUTH_ENABLED must be false")
-    if env.get("PRICETRACKER_FAKE_PROVIDER_ENABLED", "true").lower() != "false":
-        errors.append("PRICETRACKER_FAKE_PROVIDER_ENABLED must be false")
+    if "prod" not in env.get("COMPOSE_PROFILES", "").split(","):
+        errors.append("COMPOSE_PROFILES must include prod so Caddy starts")
+
+    if env.get("PRICETRACKER_ENVIRONMENT") != "production":
+        errors.append("PRICETRACKER_ENVIRONMENT must be production")
+
+    domain = env.get("DOMAIN", "")
+    if domain in {"localhost", "127.0.0.1"}:
+        errors.append("DOMAIN must be the public domain that points at this VPS")
 
     issuer = env.get("PRICETRACKER_CLERK_ISSUER", "")
     if "replace-me" in issuer or "example.clerk" in issuer:
         errors.append("PRICETRACKER_CLERK_ISSUER still looks like a placeholder")
 
     webhook = env.get("PRICETRACKER_BRIGHT_DATA_WEBHOOK_URL", "")
-    if webhook.startswith("http://localhost") or webhook.startswith("http://127."):
-        errors.append(
-            "PRICETRACKER_BRIGHT_DATA_WEBHOOK_URL must be a public HTTPS tunnel or "
-            "production URL (Bright Data cannot call localhost)"
-        )
-    elif webhook and not webhook.startswith("https://"):
+    if webhook and not webhook.startswith("https://"):
         errors.append("PRICETRACKER_BRIGHT_DATA_WEBHOOK_URL must use HTTPS")
+    if domain and webhook and domain not in webhook:
+        warnings.append(
+            "PRICETRACKER_BRIGHT_DATA_WEBHOOK_URL does not contain DOMAIN; "
+            f"expected https://{domain}/api/v1/webhooks/bright-data"
+        )
+
+    frontend = env.get("PRICETRACKER_FRONTEND_BASE_URL", "")
+    if frontend and not frontend.startswith("https://"):
+        errors.append("PRICETRACKER_FRONTEND_BASE_URL must use HTTPS")
 
     email_from = env.get("PRICETRACKER_EMAIL_FROM", "")
     if "example.test" in email_from:
         errors.append("PRICETRACKER_EMAIL_FROM still uses the example.test placeholder")
+
+    if env.get("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY") in PLACEHOLDER_PUBLISHABLE_KEYS:
+        errors.append("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is the CI placeholder, not a real key")
+
+    if env.get("POSTGRES_PASSWORD") in {"change-me-locally", "postgres", "password"}:
+        errors.append("POSTGRES_PASSWORD must be a strong generated value")
 
     if env.get("PRICETRACKER_CLERK_AUDIENCE") != "pricetracker-api":
         warnings.append(
@@ -111,14 +131,15 @@ def main() -> int:
     for warning in warnings:
         print(f"WARNING: {warning}")
     if errors:
-        print("Live-mode validation failed:")
+        print("Deploy validation failed:")
         for error in errors:
             print(f"  - {error}")
-        print("\nSee docs/go-live.md for the complete setup sequence.")
+        print("\nSee docs/deployment.md and docs/secrets.md for the setup sequence.")
         return 1
 
-    print("Live-mode environment looks ready.")
-    print("Next: rebuild Compose so NEXT_PUBLIC_* values are baked into the web image.")
+    print("Production environment looks ready.")
+    print("Note: changing NEXT_PUBLIC_* values requires rebuilding the web image;")
+    print("scripts/deploy.sh always rebuilds, so a normal deploy covers it.")
     return 0
 
 

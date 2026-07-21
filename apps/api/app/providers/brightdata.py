@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -21,7 +20,6 @@ class BrightDataError(RuntimeError):
 @dataclass(frozen=True, slots=True)
 class TriggeredSnapshot:
     snapshot_id: str
-    fake: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,16 +187,12 @@ class BrightDataClient:
             else self.settings.bright_data_ebay_dataset_id
         )
         if not dataset_id:
-            if self.settings.fake_provider_enabled:
-                return f"fake-{store.value}"
             raise BrightDataError(f"Bright Data dataset ID is not configured for {store.value}")
         return dataset_id
 
     async def trigger(self, store: Store, urls: list[str]) -> TriggeredSnapshot:
         if not urls:
             raise BrightDataError("cannot trigger an empty snapshot")
-        if self.settings.fake_provider_enabled:
-            return TriggeredSnapshot(snapshot_id=f"fake-{uuid.uuid4()}", fake=True)
         if not self.settings.bright_data_api_token:
             raise BrightDataError("Bright Data API token is not configured")
         if not self.settings.bright_data_webhook_url:
@@ -229,8 +223,6 @@ class BrightDataClient:
         return TriggeredSnapshot(snapshot_id=snapshot_id)
 
     async def fetch_snapshot(self, snapshot_id: str) -> list[dict[str, Any]]:
-        if self.settings.fake_provider_enabled:
-            return []
         if not self.settings.bright_data_api_token:
             raise BrightDataError("Bright Data API token is not configured")
         response = await self._client.get(

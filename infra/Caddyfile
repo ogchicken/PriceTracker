@@ -1,0 +1,19 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# FastAPI handles the versioned API (including the Clerk and Bright Data
+	# webhooks) plus the public health probes. /metrics is intentionally not
+	# routed; read it on the VPS via http://127.0.0.1:8000/metrics.
+	@api path /api/* /healthz /readyz
+	handle @api {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}

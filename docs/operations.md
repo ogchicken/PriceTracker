@@ -23,16 +23,19 @@ Suggested initial indicators:
 ## Telemetry
 
 Emit structured JSON logs in production with timestamp, level, service,
-environment, release (`APP_VERSION`), request/task ID, route/task name, and
-duration. Propagate a correlation ID from API/webhooks into Celery tasks.
+environment, request/task ID, route/task name, and duration. Propagate a
+correlation ID from API/webhooks into Celery tasks. Read logs on the VPS with
+`docker compose --env-file .env -f infra/compose.yaml logs [service]`.
 
 Never log bearer tokens, cookies, webhook signatures, secret values, full
 email addresses, or raw provider payloads. Hash or redact user and product
 identifiers where full values are unnecessary.
 
-Use `SENTRY_DSN` for exception reporting and the `OTEL_*` variables for traces
-and metrics export. Keep trace sampling low by default and use targeted
-sampling for errors or slow requests. Scrub request bodies and headers before
+Prometheus metrics are exposed at `/metrics`, which is deliberately not routed
+through Caddy; scrape or inspect it on the VPS via
+`curl http://127.0.0.1:8000/metrics`. Error-reporting (Sentry) and
+OpenTelemetry exporters are not currently wired into the codebase; if added,
+keep trace sampling low by default and scrub request bodies and headers before
 export.
 
 ## Health and alerting
@@ -98,8 +101,8 @@ duplicate collection.
 5. Retry transient failures with capped exponential backoff and jitter.
 6. Store a redacted malformed sample in restricted debugging storage, not
    normal logs.
-7. Switch non-production environments to fake mode; do not present fake prices
-   as real production observations.
+7. Stop the worker/scheduler in non-production environments while provider
+   credentials are broken; there is no fake-provider mode.
 
 ## Runbook: webhook backlog or signature failures
 
@@ -164,7 +167,8 @@ API and worker, not only in UI:
   concurrency;
 - per-user, per-retailer, and global hourly/daily collection ceilings;
 - a circuit breaker for provider auth, quota, schema, and elevated error rates;
-- fake providers and console email in CI, previews, and routine development;
+- mocked provider transports in tests and non-delivering email (blank Resend
+  key) in routine development, so neither spends money;
 - provider budget alerts at multiple thresholds and a hard operational stop;
 - dashboards for spend per successful observation and per active paid user.
 

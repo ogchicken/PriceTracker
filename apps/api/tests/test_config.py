@@ -19,7 +19,6 @@ def production_api_settings() -> dict[str, Any]:
         "clerk_authorized_parties": ["https://app.example.com"],
         "clerk_webhook_secret": "whsec_clerk",
         "bright_data_webhook_secret": "bright-data-webhook-secret",
-        "fake_auth_enabled": False,
     }
 
 
@@ -42,7 +41,6 @@ def test_production_worker_requires_live_provider_and_email() -> None:
         service_role="worker",
         database_url="postgresql://user:password@database.internal/pricetracker",
         redis_url="rediss://redis.internal:6379/0",
-        fake_provider_enabled=False,
         bright_data_api_token="bright-data-token",
         bright_data_amazon_dataset_id="amazon-dataset",
         bright_data_ebay_dataset_id="ebay-dataset",
