@@ -1,0 +1,24 @@
+{
+  "name": "pricetracker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PriceTracker monorepo tooling",
+  "packageManager": "pnpm@10.33.2",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm --dir apps/web dev",
+    "dev:web": "pnpm --dir apps/web dev",
+    "start": "pnpm --dir apps/web start",
+    "build": "pnpm --dir apps/web build",
+    "lint": "pnpm --dir apps/web lint",
+    "typecheck": "pnpm --dir apps/web typecheck",
+    "test": "pnpm --dir apps/web test",
+    "test:watch": "pnpm --dir apps/web test:watch",
+    "test:e2e": "pnpm --dir apps/web test:e2e",
+    "generate:api": "pnpm --dir apps/web generate:api"
+  }
+}
+

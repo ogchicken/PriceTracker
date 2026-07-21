@@ -1,0 +1,10 @@
+# Replace this placeholder with the repository owner or team before enforcing
+# required CODEOWNERS reviews in branch protection.
+* @your-github-handle
+
+# Suggested ownership boundaries:
+# /apps/api/ @your-backend-team
+# /apps/web/ @your-frontend-team
+# /infra/ @your-platform-team
+# /.github/ @your-platform-team
+
