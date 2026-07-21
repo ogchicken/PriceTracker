@@ -252,6 +252,13 @@ docker compose --env-file .env -f infra/compose.yaml ps   # all services healthy
 > run through `scripts/deploy.sh` (or explicitly via
 > `docker compose --env-file .env -f infra/compose.yaml run --rm migrate`).
 
+> **Running Compose by hand:** the `docker compose` commands throughout this
+> guide pass `--env-file .env`, but profiled services (`caddy` under the `prod`
+> profile) only appear when `COMPOSE_PROFILES` is active in your shell.
+> `scripts/deploy.sh` exports it for you; for manual commands, export it to
+> match `.env` first — `export COMPOSE_PROFILES=prod` — otherwise
+> `... ps` / `... logs caddy` won't see the proxy.
+
 ## 9. Wire the webhooks (needs the live HTTPS domain)
 
 Now that `https://$DOMAIN` exists, connect the providers (dashboard
