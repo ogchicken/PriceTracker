@@ -24,6 +24,7 @@ export interface TrackedItemSummaryDto {
 export interface TrackedItemDto extends TrackedItemSummaryDto {
   shippingPrice: number | null;
   seller: string | null;
+  notifyBackInStock: boolean;
   priceHistory: PricePointDto[];
   createdAt: string;
 }
@@ -57,11 +58,13 @@ export interface CreateTrackedItemInput {
   productUrl: string;
   targetPrice: number;
   currency: string;
+  notifyBackInStock?: boolean;
 }
 
 export interface UpdateTrackedItemInput {
   targetPrice?: number;
   status?: "active" | "paused";
+  notifyBackInStock?: boolean;
 }
 
 export interface SavePreferencesInput {

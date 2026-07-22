@@ -63,6 +63,7 @@ class AvailabilityStatus(str, enum.Enum):
 class AlertKind(str, enum.Enum):
     INITIAL_BELOW_TARGET = "initial_below_target"
     PRICE_DROP = "price_drop"
+    BACK_IN_STOCK = "back_in_stock"
 
 
 class NotificationChannel(str, enum.Enum):
@@ -195,6 +196,7 @@ class Watch(TimestampMixin, Base):
         _enum(AlertState, "alert_state"), default=AlertState.ARMED, nullable=False
     )
     notify_initial_below_target: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    notify_back_in_stock: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped[User] = relationship(back_populates="watches")

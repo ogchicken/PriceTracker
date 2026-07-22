@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
 import { marketplaceForUrl } from "@/lib/store-url";
 
 export function getMarketplaceSupport(value: string) {
@@ -53,7 +54,8 @@ const addItemSchema = z.object({
     .string()
     .trim()
     .length(3, "Use a three-letter currency code.")
-    .regex(/^[A-Za-z]{3}$/, "Use letters only.")
+    .regex(/^[A-Za-z]{3}$/, "Use letters only."),
+  notifyBackInStock: z.boolean()
 });
 
 type AddItemValues = z.infer<typeof addItemSchema>;
@@ -73,12 +75,14 @@ export function AddItemDialog({
     defaultValues: {
       productUrl: "",
       targetPrice: "",
-      currency: "USD"
+      currency: "USD",
+      notifyBackInStock: true
     },
     mode: "onBlur"
   });
 
   const url = useWatch({ control: form.control, name: "productUrl" });
+  const notifyBackInStock = useWatch({ control: form.control, name: "notifyBackInStock" });
   const marketplace = getMarketplaceSupport(url);
 
   function submit(values: AddItemValues) {
@@ -86,7 +90,8 @@ export function AddItemDialog({
       const result = await createTrackedItemAction({
         productUrl: values.productUrl,
         targetPrice: Number(values.targetPrice),
-        currency: values.currency.toUpperCase()
+        currency: values.currency.toUpperCase(),
+        notifyBackInStock: values.notifyBackInStock
       });
       if (!result.ok) {
         if (result.fieldErrors?.productUrl?.[0]) {
@@ -187,6 +192,23 @@ export function AddItemDialog({
               <FieldError id="currency-error">
                 {form.formState.errors.currency?.message}
               </FieldError>
+            </Field>
+
+            <Field className="flex-row items-center justify-between rounded-lg border p-4">
+              <div className="flex flex-col gap-1">
+                <FieldLabel htmlFor="notify-back-in-stock">Notify when back in stock</FieldLabel>
+                <FieldDescription>
+                  Alert me if this item is out of stock now and later becomes available.
+                </FieldDescription>
+              </div>
+              <Switch
+                id="notify-back-in-stock"
+                checked={notifyBackInStock}
+                onCheckedChange={(checked) =>
+                  form.setValue("notifyBackInStock", checked, { shouldDirty: true })
+                }
+                aria-label="Notify when back in stock"
+              />
             </Field>
 
             {url && marketplace ? (

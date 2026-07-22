@@ -63,9 +63,32 @@ describe("AddItemDialog", () => {
       expect(mocks.createItem).toHaveBeenCalledWith({
         productUrl: "https://www.amazon.com/dp/B09XS7JWHH",
         targetPrice: 315.5,
-        currency: "USD"
+        currency: "USD",
+        notifyBackInStock: true
       })
     );
     expect(mocks.refresh).toHaveBeenCalled();
+  });
+
+  it("lets the user opt out of back-in-stock alerts", async () => {
+    const user = userEvent.setup();
+    render(<AddItemDialog defaultOpen />);
+
+    await user.type(
+      screen.getByLabelText("Product URL"),
+      "https://www.amazon.com/dp/B09XS7JWHH"
+    );
+    await user.type(screen.getByLabelText("Target price"), "315.50");
+    await user.click(screen.getByRole("switch", { name: "Notify when back in stock" }));
+    await user.click(screen.getByRole("button", { name: "Start tracking" }));
+
+    await waitFor(() =>
+      expect(mocks.createItem).toHaveBeenCalledWith({
+        productUrl: "https://www.amazon.com/dp/B09XS7JWHH",
+        targetPrice: 315.5,
+        currency: "USD",
+        notifyBackInStock: false
+      })
+    );
   });
 });

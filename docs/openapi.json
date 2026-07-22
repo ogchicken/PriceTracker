@@ -404,6 +404,11 @@
             "title": "Currency",
             "type": "string"
           },
+          "notify_back_in_stock": {
+            "default": true,
+            "title": "Notify Back In Stock",
+            "type": "boolean"
+          },
           "notify_initial_below_target": {
             "default": true,
             "title": "Notify Initial Below Target",
@@ -449,6 +454,10 @@
             "title": "Id",
             "type": "string"
           },
+          "notify_back_in_stock": {
+            "title": "Notify Back In Stock",
+            "type": "boolean"
+          },
           "notify_initial_below_target": {
             "title": "Notify Initial Below Target",
             "type": "boolean"
@@ -476,6 +485,7 @@
           "status",
           "alert_state",
           "notify_initial_below_target",
+          "notify_back_in_stock",
           "created_at",
           "updated_at",
           "product"
@@ -493,6 +503,17 @@
       },
       "WatchUpdate": {
         "properties": {
+          "notify_back_in_stock": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Back In Stock"
+          },
           "notify_initial_below_target": {
             "anyOf": [
               {

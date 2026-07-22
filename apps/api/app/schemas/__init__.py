@@ -41,6 +41,7 @@ class WatchCreate(BaseModel):
     target_price_minor: int = Field(ge=0, le=9_000_000_000_000_000_000)
     currency: str = Field(pattern=r"^[A-Za-z]{3}$")
     notify_initial_below_target: bool = True
+    notify_back_in_stock: bool = True
 
     @field_validator("currency")
     @classmethod
@@ -56,6 +57,7 @@ class WatchUpdate(BaseModel):
     )
     status: WatchStatus | None = None
     notify_initial_below_target: bool | None = None
+    notify_back_in_stock: bool | None = None
 
 
 class WatchResponse(ApiModel):
@@ -65,6 +67,7 @@ class WatchResponse(ApiModel):
     status: WatchStatus
     alert_state: AlertState
     notify_initial_below_target: bool
+    notify_back_in_stock: bool
     created_at: datetime
     updated_at: datetime
     product: ProductResponse

@@ -33,13 +33,15 @@ const createItemSchema = z.object({
     .string()
     .trim()
     .length(3, "Use a three-letter currency code.")
-    .transform((value) => value.toUpperCase())
+    .transform((value) => value.toUpperCase()),
+  notifyBackInStock: z.boolean().optional()
 });
 
 const updateItemSchema = z.object({
   id: z.string().min(1),
   targetPrice: z.coerce.number().positive().max(1_000_000).optional(),
-  status: z.enum(["active", "paused"]).optional()
+  status: z.enum(["active", "paused"]).optional(),
+  notifyBackInStock: z.boolean().optional()
 });
 
 const preferencesSchema = z.object({
@@ -90,7 +92,8 @@ export async function updateTrackedItemAction(input: unknown): Promise<ActionRes
     await requireAuthenticatedUser();
     await updateItem(parsed.data.id, {
       targetPrice: parsed.data.targetPrice,
-      status: parsed.data.status
+      status: parsed.data.status,
+      notifyBackInStock: parsed.data.notifyBackInStock
     });
     revalidatePath(`/items/${parsed.data.id}`);
     revalidatePath("/dashboard");

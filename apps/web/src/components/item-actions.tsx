@@ -35,30 +35,52 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
 import type { TrackingStatus } from "@/lib/api/types";
 
 export function ItemActions({
   itemId,
   targetPrice,
-  status
+  status,
+  notifyBackInStock
 }: {
   itemId: string;
   targetPrice: number;
   status: TrackingStatus;
+  notifyBackInStock: boolean;
 }) {
   const router = useRouter();
   const [target, setTarget] = useState(targetPrice.toFixed(2));
+  const [backInStock, setBackInStock] = useState(notifyBackInStock);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const paused = status === "paused";
 
-  function update(input: { targetPrice?: number; status?: "active" | "paused" }) {
+  function update(input: {
+    targetPrice?: number;
+    status?: "active" | "paused";
+    notifyBackInStock?: boolean;
+  }) {
     startTransition(async () => {
       const result = await updateTrackedItemAction({ id: itemId, ...input });
       if (result.ok) {
         toast.success(result.message);
         router.refresh();
       } else {
+        toast.error("Update failed", { description: result.message });
+      }
+    });
+  }
+
+  function toggleBackInStock(checked: boolean) {
+    setBackInStock(checked);
+    startTransition(async () => {
+      const result = await updateTrackedItemAction({ id: itemId, notifyBackInStock: checked });
+      if (result.ok) {
+        toast.success(result.message);
+        router.refresh();
+      } else {
+        setBackInStock(!checked);
         toast.error("Update failed", { description: result.message });
       }
     });
@@ -122,6 +144,20 @@ export function ItemActions({
             </Field>
           </FieldGroup>
         </form>
+
+        <Field className="mt-6 flex-row items-center justify-between rounded-lg border p-4">
+          <div className="flex flex-col gap-1">
+            <FieldLabel htmlFor="notify-back-in-stock">Back-in-stock alerts</FieldLabel>
+            <FieldDescription>Notify me when this item returns to stock.</FieldDescription>
+          </div>
+          <Switch
+            id="notify-back-in-stock"
+            checked={backInStock}
+            disabled={isPending}
+            onCheckedChange={toggleBackInStock}
+            aria-label="Back-in-stock alerts"
+          />
+        </Field>
       </CardContent>
       <CardFooter className="flex-wrap">
         <Button type="submit" form="target-price-form" disabled={isPending}>

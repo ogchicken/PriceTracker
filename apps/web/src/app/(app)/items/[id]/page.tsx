@@ -155,6 +155,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
             itemId={item.id}
             targetPrice={item.targetPrice}
             status={item.status}
+            notifyBackInStock={item.notifyBackInStock}
           />
           <Card>
             <CardHeader>

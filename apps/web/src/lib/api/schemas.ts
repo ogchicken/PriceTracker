@@ -25,6 +25,7 @@ export const trackedItemSummaryDtoSchema = z.object({
 export const trackedItemDtoSchema = trackedItemSummaryDtoSchema.extend({
   shippingPrice: z.number().nonnegative().nullable(),
   seller: z.string().max(300).nullable(),
+  notifyBackInStock: z.boolean(),
   priceHistory: z.array(pricePointDtoSchema).max(10_000),
   createdAt: z.string().datetime({ offset: true })
 });

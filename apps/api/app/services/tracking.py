@@ -268,6 +268,9 @@ async def process_brightdata_event(
         )
         session.add(observation)
         await session.flush()
+        # Capture the prior availability before it is overwritten so alert
+        # evaluation can detect an out-of-stock -> in-stock transition.
+        previous_availability = matched_product.availability
         matched_product.title = normalized.title or matched_product.title
         matched_product.image_url = normalized.image_url or matched_product.image_url
         matched_product.item_price_minor = normalized.item_price_minor
@@ -283,6 +286,7 @@ async def process_brightdata_event(
             session,
             observation,
             default_rearm_percent=settings.alert_rearm_percent,
+            previous_availability=previous_availability,
         )
         observed_product_ids.add(matched_product.id)
         created += 1
