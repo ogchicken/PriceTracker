@@ -97,7 +97,7 @@ contact method at [PRIVACY EMAIL]. Verify identity without collecting
 excessive additional data and respond within applicable deadlines.
 
 Document cookie choices and opt-outs if nonessential cookies or analytics are
-introduced. Transactional price alerts should include an appropriate way to
+introduced. Transactional alert emails should include an appropriate way to
 disable the watch or its notifications.
 
 ## International transfers

@@ -3,7 +3,8 @@
 ## Goals
 
 PriceTracker provides authenticated users with durable product watches, price
-history, scheduled retail-price refreshes, and threshold alerts. The design
+history, scheduled retail-price refreshes, and alerts on price thresholds and
+back-in-stock transitions. The design
 keeps HTTP request latency independent of scraping latency, treats PostgreSQL
 as the system of record, and makes paid-provider usage measurable and bounded.
 
@@ -34,7 +35,7 @@ flowchart LR
     Worker -->|collection request| Bright
     Bright -->|signed completion webhook| API
     API -->|enqueue processing| Redis
-    Worker -->|price alerts| Resend
+    Worker -->|price + stock alerts| Resend
 ```
 
 ## Components and ownership
@@ -58,8 +59,9 @@ flowchart LR
   injected mock transports, and a development/test-only fake provider
   (`PRICETRACKER_PRICE_PROVIDER=fake`) serves deterministic synthetic prices;
   it is refused in staging and production.
-- **Resend** sends transactional price-alert email. A blank API key selects a
-  non-delivering logging provider during development and tests.
+- **Resend** sends transactional alert email for price targets and back-in-stock
+  transitions. A blank API key selects a non-delivering logging provider during
+  development and tests.
 
 ## Trust boundaries
 
@@ -171,8 +173,12 @@ sequenceDiagram
     R->>W: Deliver processing task
     W->>B: Fetch/validate result
     W->>P: Insert observation and update next check
+    alt Availability returned to in-stock
+        W->>E: Send idempotent back-in-stock alert
+        W->>P: Record delivery outcome
+    end
     alt Threshold crossed and unsent
-        W->>E: Send idempotent alert
+        W->>E: Send idempotent price alert
         W->>P: Record delivery outcome
     end
 ```

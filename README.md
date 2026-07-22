@@ -1,7 +1,8 @@
 # PriceTracker
 
 PriceTracker monitors retail product prices, records price history, and sends
-user alerts when a target price is reached. It is a pnpm/uv monorepo with a
+user alerts when a target price is reached or a tracked item comes back in
+stock. It is a pnpm/uv monorepo with a
 Next.js frontend, a FastAPI API, and Celery workers, deployed as a single
 Docker Compose stack behind a Caddy reverse proxy.
 
@@ -14,7 +15,7 @@ Browser -> Caddy (TLS) -> Next.js (apps/web) -> FastAPI (apps/api) -> PostgreSQL
                                                  |                    |
                                                  +<---------------- Bright Data
                                                  |
-                                                 +-> Resend (price alerts)
+                                                 +-> Resend (price + stock alerts)
 
 Clerk -> Next.js session -> Clerk JWT -> FastAPI authorization
 Clerk/Bright Data ----------------------> signed API webhooks
