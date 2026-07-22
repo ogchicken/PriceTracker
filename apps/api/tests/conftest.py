@@ -14,7 +14,7 @@ os.environ["PRICETRACKER_ENVIRONMENT"] = "test"
 os.environ["PRICETRACKER_DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 os.environ["PRICETRACKER_REDIS_URL"] = "redis://localhost:6379/15"
 
-import app.models  # noqa: E402,F401  (register ORM tables on Base.metadata)
+from app import models  # noqa: E402,F401  (register ORM tables on Base.metadata)
 from app.config import Settings  # noqa: E402
 from app.db import Base  # noqa: E402
 from app.main import app  # noqa: E402
