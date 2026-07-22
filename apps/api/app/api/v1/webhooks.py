@@ -7,40 +7,17 @@ from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert
 from svix.webhooks import Webhook, WebhookVerificationError
 
 from app.api.deps import DbSession
 from app.config import Settings, get_settings
-from app.models import User, WebhookEvent
+from app.models import User
 from app.schemas import WebhookAccepted
 from app.services.tracking import utcnow
-from app.stores.repositories import upsert_user
+from app.stores.repositories import record_webhook_event, upsert_user
 from app.workers.tasks import enqueue_provider_event
 
 router = APIRouter()
-
-
-async def _record_event(
-    session: DbSession,
-    *,
-    provider: str,
-    external_event_id: str,
-    payload: dict[str, Any],
-) -> WebhookEvent | None:
-    statement = (
-        insert(WebhookEvent)
-        .values(
-            provider=provider,
-            external_event_id=external_event_id,
-            payload=payload,
-        )
-        .on_conflict_do_nothing(
-            index_elements=[WebhookEvent.provider, WebhookEvent.external_event_id]
-        )
-        .returning(WebhookEvent)
-    )
-    return (await session.execute(statement)).scalar_one_or_none()
 
 
 def _clerk_email(data: dict[str, Any]) -> str | None:
@@ -77,7 +54,7 @@ async def clerk_webhook(
     external_event_id = str(payload.get("id") or request.headers.get("svix-id") or "")
     if not external_event_id:
         raise HTTPException(status_code=400, detail="Clerk event ID is missing")
-    event = await _record_event(
+    event = await record_webhook_event(
         session,
         provider="clerk",
         external_event_id=external_event_id,
@@ -148,7 +125,7 @@ async def bright_data_webhook(
     external_event_id = (
         request.headers.get("x-brightdata-event-id") or hashlib.sha256(raw_body).hexdigest()
     )
-    event = await _record_event(
+    event = await record_webhook_event(
         session,
         provider="bright_data",
         external_event_id=external_event_id,

@@ -1,0 +1,20 @@
+{
+  "_comment": "Optional overrides for the fake price provider. Point PRICETRACKER_FAKE_FIXTURES_PATH at a copy of this file. Keys are product external IDs (Amazon ASIN or eBay item ID). Prices are in MINOR units (e.g. cents). Provide either a fixed 'price' or a 'prices' series consumed one entry per check (settling on the last value). Products not listed here fall back to the built-in deterministic oscillation. NOTE: keys starting with '_' are ignored because they carry neither 'price' nor 'prices'.",
+  "B00EXAMPLE1": {
+    "prices": [4999, 4599, 3999, 3499],
+    "currency": "USD",
+    "title": "Demo Widget (drops to target on the 4th check)"
+  },
+  "B00EXAMPLE2": {
+    "price": 2500,
+    "currency": "USD",
+    "shipping_price_minor": 499,
+    "availability": "in stock",
+    "title": "Demo Gadget (fixed price)"
+  },
+  "123456789012": {
+    "prices": [8999, 8999, 7499],
+    "currency": "USD",
+    "title": "Demo eBay Item"
+  }
+}

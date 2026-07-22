@@ -43,6 +43,13 @@ class Settings(BaseSettings):
     bright_data_webhook_url: str | None = None
     bright_data_webhook_secret: str | None = None
 
+    # Price provider selection. "fake" is a development/test-only stand-in that
+    # returns deterministic synthetic prices without calling Bright Data; it is
+    # rejected in staging and production (see guard_unsafe_modes).
+    price_provider: Literal["bright_data", "fake"] = "bright_data"
+    fake_provider_delay_seconds: float = 2.0
+    fake_fixtures_path: str | None = None
+
     resend_api_key: str | None = None
     email_from: str = "PriceTracker <alerts@example.test>"
     frontend_base_url: str = "http://localhost:3000"
@@ -85,6 +92,8 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def guard_unsafe_modes(self) -> Settings:
         if self.environment in {"staging", "production"}:
+            if self.price_provider != "bright_data":
+                raise ValueError("the fake price provider is not allowed in staging or production")
             validates_api = self.service_role in {"all", "api"}
             validates_worker = self.service_role in {"all", "worker"}
             required: dict[str, object] = {
