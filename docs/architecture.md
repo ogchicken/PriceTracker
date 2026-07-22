@@ -55,7 +55,9 @@ flowchart LR
 - **Celery beat/scheduler** emits due-check jobs. Exactly one scheduler should
   run per environment.
 - **Bright Data** performs external retail collection. Tests substitute
-  injected mock transports; there is no fake-provider runtime mode.
+  injected mock transports, and a development/test-only fake provider
+  (`PRICETRACKER_PRICE_PROVIDER=fake`) serves deterministic synthetic prices;
+  it is refused in staging and production.
 - **Resend** sends transactional price-alert email. A blank API key selects a
   non-delivering logging provider during development and tests.
 

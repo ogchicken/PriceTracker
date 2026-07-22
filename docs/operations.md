@@ -79,6 +79,10 @@ connection pressure.
 Never purge queues without recording affected jobs and having a database-based
 reconciliation plan.
 
+While Redis is unavailable, `POST /api/v1/watches` returns 503 by design — the
+creation rate limiter fails closed to protect provider spend — so treat those
+503s as expected during a Redis outage, not as a separate API fault.
+
 ## Runbook: scheduler missing or duplicated checks
 
 1. Confirm exactly one scheduler instance and a recent scheduler heartbeat.
@@ -101,8 +105,10 @@ duplicate collection.
 5. Retry transient failures with capped exponential backoff and jitter.
 6. Store a redacted malformed sample in restricted debugging storage, not
    normal logs.
-7. Stop the worker/scheduler in non-production environments while provider
-   credentials are broken; there is no fake-provider mode.
+7. In development, either stop the worker/scheduler while provider credentials
+   are broken, or switch to the fake price provider
+   (`PRICETRACKER_PRICE_PROVIDER=fake`), which serves deterministic synthetic
+   prices without calling Bright Data and is refused in staging and production.
 
 ## Runbook: webhook backlog or signature failures
 
@@ -162,6 +168,10 @@ API and worker, not only in UI:
   `PRICETRACKER_TRACKING_JITTER_MINUTES`;
 - product leases bounded by `PRICETRACKER_PRODUCT_LEASE_MINUTES`;
 - one active watch per intended user/product/retailer combination;
+- per-user ceilings on active watches (`PRICETRACKER_MAX_ACTIVE_WATCHES_PER_USER`)
+  and hourly watch creation (`PRICETRACKER_WATCH_CREATE_RATE_LIMIT_PER_HOUR`); the
+  creation limiter fails closed (returns 503) when Redis is unavailable, so an
+  outage cannot become an unlimited-create bypass;
 - collection deduplication and provider idempotency keys;
 - stale-job detection, `PRICETRACKER_PROVIDER_MAX_ATTEMPTS`, and bounded worker
   concurrency;
