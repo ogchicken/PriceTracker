@@ -20,6 +20,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import CurrentUser, DbSession
 from app.config import Settings, get_settings
+from app.logging import get_logger
 from app.models import AlertState, PriceObservation, Watch, WatchStatus
 from app.providers.adapters import AdapterError, adapter_registry
 from app.schemas import (
@@ -33,6 +34,7 @@ from app.services.tracking import utcnow
 from app.workers.tasks import enqueue_immediate_lookup
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 
 async def _enforce_create_limits(
@@ -54,8 +56,15 @@ async def _enforce_create_limits(
         count = await request.app.state.redis.incr(key)
         if count == 1:
             await request.app.state.redis.expire(key, 3700)
-    except RedisError:
-        return
+    except RedisError as exc:
+        # Fail closed: this limiter is a cost control on paid provider lookups
+        # (each create triggers an immediate snapshot). A Redis outage must not
+        # degrade into an unlimited-create bypass, so refuse rather than allow.
+        logger.warning("watch_create_rate_limit_unavailable", user_id=str(user.id))
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="watch creation is temporarily unavailable",
+        ) from exc
     if count > settings.watch_create_rate_limit_per_hour:
         raise HTTPException(status_code=429, detail="watch creation rate limit exceeded")
 
