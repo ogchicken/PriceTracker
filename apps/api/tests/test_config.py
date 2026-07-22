@@ -70,3 +70,11 @@ def test_production_api_rejects_insecure_public_origin() -> None:
 
     with pytest.raises(ValidationError, match="must use HTTPS"):
         Settings(**values)
+
+
+def test_production_rejects_fake_price_provider() -> None:
+    values = production_api_settings()
+    values["price_provider"] = "fake"
+
+    with pytest.raises(ValidationError, match="fake price provider"):
+        Settings(**values)

@@ -6,10 +6,12 @@ for user data and paid-provider usage.
 ## Development setup
 
 Follow the exact workflow in [README.md](README.md). You need a Clerk
-**development instance** (free) for sign-in; keep the Resend key blank so
-email stays non-delivering, and only run the Celery worker/scheduler when a
-change explicitly needs the Bright Data pipeline (collections cost money).
-Never use production credentials or real customer data in development.
+**development instance** (free) for sign-in; keep the Resend key blank so email
+stays non-delivering. To exercise the worker, scheduler, and full alert pipeline
+without paid collections, set `PRICETRACKER_PRICE_PROVIDER=fake` (deterministic
+synthetic prices, no external calls); only use the real Bright Data pipeline when
+a change explicitly needs it (collections cost money). Never use production
+credentials or real customer data in development.
 
 ## Workflow
 

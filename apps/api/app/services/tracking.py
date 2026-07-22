@@ -20,7 +20,8 @@ from app.models import (
     WatchStatus,
     WebhookEvent,
 )
-from app.providers.brightdata import BrightDataClient, BrightDataError, normalize_result
+from app.providers.base import PriceProvider
+from app.providers.brightdata import BrightDataError, normalize_result
 from app.services.alerts import evaluate_watches_for_observation
 
 
@@ -98,7 +99,7 @@ def group_products_by_store(
 async def trigger_snapshot(
     session: AsyncSession,
     settings: Settings,
-    client: BrightDataClient,
+    client: PriceProvider,
     store: Store,
     products: list[StoreProduct],
 ) -> ProviderJob:
@@ -170,7 +171,7 @@ async def mark_stale_jobs(session: AsyncSession, settings: Settings) -> int:
 async def process_brightdata_event(
     session: AsyncSession,
     settings: Settings,
-    client: BrightDataClient,
+    client: PriceProvider,
     event_id: uuid.UUID,
 ) -> int:
     event = await session.scalar(

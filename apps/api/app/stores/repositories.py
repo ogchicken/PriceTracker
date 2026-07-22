@@ -1,14 +1,41 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import StoreProduct, User, Watch
+from app.models import StoreProduct, User, Watch, WebhookEvent
 from app.providers.adapters import NormalizedProduct
+
+
+async def record_webhook_event(
+    session: AsyncSession,
+    *,
+    provider: str,
+    external_event_id: str,
+    payload: dict[str, Any],
+) -> WebhookEvent | None:
+    """Insert a webhook event, ignoring duplicates by (provider, external_event_id).
+
+    Returns the inserted row, or ``None`` when the event was already recorded.
+    """
+    statement = (
+        insert(WebhookEvent)
+        .values(
+            provider=provider,
+            external_event_id=external_event_id,
+            payload=payload,
+        )
+        .on_conflict_do_nothing(
+            index_elements=[WebhookEvent.provider, WebhookEvent.external_event_id]
+        )
+        .returning(WebhookEvent)
+    )
+    return (await session.execute(statement)).scalar_one_or_none()
 
 
 async def upsert_user(

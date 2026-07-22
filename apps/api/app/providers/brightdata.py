@@ -11,15 +11,11 @@ import httpx
 from app.config import Settings
 from app.models import AvailabilityStatus, Store
 from app.providers.adapters import AdapterError, adapter_registry
+from app.providers.base import PriceProvider, TriggeredSnapshot
 
 
 class BrightDataError(RuntimeError):
     pass
-
-
-@dataclass(frozen=True, slots=True)
-class TriggeredSnapshot:
-    snapshot_id: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,7 +167,7 @@ def normalize_result(store: Store, payload: dict[str, Any]) -> NormalizedObserva
     )
 
 
-class BrightDataClient:
+class BrightDataClient(PriceProvider):
     def __init__(self, settings: Settings, http_client: httpx.AsyncClient | None = None) -> None:
         self.settings = settings
         self._client = http_client or httpx.AsyncClient(

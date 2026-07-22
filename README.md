@@ -118,14 +118,36 @@ while keeping application processes on the host for fast reloads.
 
 ### The worker and scheduler in development
 
-There is no fake price provider: triggering a snapshot performs a **paid Bright
-Data collection**. For everyday UI/API development simply do not run the worker
-or scheduler — new watches stay in a pending state until a worker processes
-them, and everything else works.
+By default the worker performs **paid Bright Data collections**. For everyday
+development you can either run the worker with the free **fake provider** (below)
+or not run it at all — without a worker, new watches simply stay pending and
+everything else works.
 
-When you are specifically testing the scraping pipeline, fill in the Bright
-Data variables (see [docs/secrets.md](docs/secrets.md#bright-data)), expose
-your local API with an HTTPS tunnel (Bright Data cannot call `localhost`):
+#### Fake price provider (recommended for local development)
+
+Set `PRICETRACKER_PRICE_PROVIDER=fake` in `.env` to drive the **entire** pipeline
+— scheduling, leasing, price observations, alerts, and (suppressed) emails —
+with deterministic synthetic prices and **no** Bright Data credentials, HTTPS
+tunnel, or external calls. Then run the worker and scheduler on the host:
+
+```powershell
+uv run --project apps/api celery -A app.workers.celery_app worker --loglevel=INFO
+uv run --project apps/api celery -A app.workers.celery_app beat --loglevel=INFO
+```
+
+Prices oscillate deterministically across checks, so watches move toward their
+targets and alerts fire and re-arm; alert emails appear as `email_suppressed`
+log lines while the Resend key is blank. To script exact prices for specific
+products, copy `apps/api/fixtures/fake_prices.example.json`, point
+`PRICETRACKER_FAKE_FIXTURES_PATH` at your copy, and key entries by Amazon ASIN or
+eBay item ID. The fake provider is refused in staging and production.
+
+#### Real Bright Data pipeline
+
+When you are specifically testing the real scraping integration, fill in the
+Bright Data variables (see [docs/secrets.md](docs/secrets.md#bright-data)),
+expose your local API with an HTTPS tunnel (Bright Data cannot call
+`localhost`):
 
 ```powershell
 cloudflared tunnel --url http://localhost:8000

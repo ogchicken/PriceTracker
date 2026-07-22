@@ -5,14 +5,22 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import get_settings
 from app.logging import get_logger
-from app.models import StoreProduct, WebhookEvent
-from app.providers.brightdata import BrightDataClient, BrightDataError
+from app.models import (
+    PriceObservation,
+    ProviderJob,
+    ProviderName,
+    StoreProduct,
+    WebhookEvent,
+)
+from app.providers.brightdata import BrightDataError
 from app.providers.email import build_email_provider
+from app.providers.factory import build_price_provider
+from app.providers.fake import build_fake_result
 from app.services.notifications import deliver_pending_notifications
 from app.services.tracking import (
     claim_due_products,
@@ -23,6 +31,7 @@ from app.services.tracking import (
     trigger_snapshot,
     utcnow,
 )
+from app.stores.repositories import record_webhook_event
 from app.workers.celery_app import celery_app
 
 settings = get_settings()
@@ -59,7 +68,7 @@ def enqueue_provider_event(event_id: str) -> None:
 
 
 async def _run_tracking_cycle() -> int:
-    client = BrightDataClient(settings)
+    client = build_price_provider(settings)
     try:
         async with _worker_transaction() as session:
             await stop_products_without_active_watches(session)
@@ -77,7 +86,7 @@ def tracking_cycle() -> int:
 
 
 async def _run_immediate_lookup(product_id: str) -> bool:
-    client = BrightDataClient(settings)
+    client = build_price_provider(settings)
     try:
         async with _worker_transaction() as session:
             product = await session.scalar(
@@ -108,7 +117,7 @@ def immediate_lookup(self, product_id: str) -> bool:
 
 
 async def _process_provider_event(event_id: str) -> int:
-    client = BrightDataClient(settings)
+    client = build_price_provider(settings)
     try:
         async with _worker_transaction() as session:
             return await process_brightdata_event(
@@ -134,8 +143,73 @@ def process_provider_event(self, event_id: str) -> int:
         raise self.retry(exc=exc, countdown=min(10 * (2**self.request.retries), 300)) from exc
 
 
+class _JobNotReady(Exception):
+    """The provider job for a fake snapshot is not committed yet; retry later."""
+
+
+async def _deliver_fake_snapshot(snapshot_id: str) -> str | None:
+    async with _worker_transaction() as session:
+        job = await session.scalar(
+            select(ProviderJob)
+            .where(
+                ProviderJob.provider == ProviderName.BRIGHT_DATA,
+                ProviderJob.external_job_id == snapshot_id,
+            )
+            .with_for_update()
+        )
+        if job is None:
+            raise _JobNotReady(snapshot_id)
+        product_uuids = [uuid.UUID(item) for item in job.product_ids]
+        products = (
+            await session.scalars(select(StoreProduct).where(StoreProduct.id.in_(product_uuids)))
+        ).all()
+        results = []
+        for product in products:
+            tick = await session.scalar(
+                select(func.count())
+                .select_from(PriceObservation)
+                .where(PriceObservation.product_id == product.id)
+            )
+            results.append(
+                build_fake_result(
+                    product.store,
+                    product.external_id,
+                    product.canonical_url,
+                    int(tick or 0),
+                    settings,
+                )
+            )
+        payload = {"snapshot_id": snapshot_id, "status": "ready", "results": results}
+        event = await record_webhook_event(
+            session,
+            provider="bright_data",
+            external_event_id=f"fake-{snapshot_id}",
+            payload=payload,
+        )
+        # A missing row means the synthetic webhook was already delivered.
+        return str(event.id) if event is not None else None
+
+
+@celery_app.task(
+    bind=True,
+    name="tracking.deliver_fake_snapshot",
+    max_retries=5,
+    default_retry_delay=2,
+)
+def deliver_fake_snapshot(self, snapshot_id: str) -> str | None:
+    if settings.price_provider != "fake":
+        return None
+    try:
+        event_id = asyncio.run(_deliver_fake_snapshot(snapshot_id))
+    except Exception as exc:
+        raise self.retry(exc=exc, countdown=min(2 * (2**self.request.retries), 60)) from exc
+    if event_id is not None:
+        enqueue_provider_event(event_id)
+    return event_id
+
+
 async def _process_webhook_inbox() -> int:
-    client = BrightDataClient(settings)
+    client = build_price_provider(settings)
     processed = 0
     try:
         async with _worker_transaction() as session:
