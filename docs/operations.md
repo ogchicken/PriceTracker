@@ -14,7 +14,7 @@ Suggested initial indicators:
 - age and depth of each Celery queue;
 - time from scheduled check to persisted observation;
 - provider collection success, timeout, malformed-result, and retry rates;
-- time from threshold observation to accepted email;
+- time from alert-triggering observation to accepted email;
 - webhook signature failures, duplicate events, and processing lag;
 - database connection saturation, transaction latency, locks, storage, and
   replication/backup health;

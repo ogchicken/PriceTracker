@@ -187,7 +187,7 @@ account so a runaway schedule cannot surprise you.
 
 ## Resend
 
-Resend sends the price-alert emails. Create an account at
+Resend sends the alert emails. Create an account at
 <https://resend.com>.
 
 ### 1. Verify a sending domain
