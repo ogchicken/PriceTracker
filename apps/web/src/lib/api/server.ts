@@ -101,6 +101,7 @@ function mapItem(watch: ApiWatch, history: ApiPriceObservation[]): TrackedItemDt
         ? null
         : fromMinor(watch.product.shipping_price_minor, summary.currency),
     seller: null,
+    notifyBackInStock: watch.notify_back_in_stock,
     priceHistory: [...history]
       .sort((a, b) => Date.parse(a.observed_at) - Date.parse(b.observed_at))
       .map((point) => ({
@@ -124,11 +125,14 @@ function mapNotification(notification: ApiNotification): NotificationDto {
           currency
         }).format(fromMinor(payload.price_minor, currency))
       : "your target";
+  const backInStock = payload.kind === "back_in_stock";
   return {
     id: notification.id,
     itemId,
-    title: `${title} reached your target`,
-    body: `The latest observed total is ${price}. Confirm price and availability at the store.`,
+    title: backInStock ? `${title} is back in stock` : `${title} reached your target`,
+    body: backInStock
+      ? `Available again at ${price}. Confirm price and availability at the store.`
+      : `The latest observed total is ${price}. Confirm price and availability at the store.`,
     createdAt: notification.created_at,
     readAt: notification.read_at
   };
@@ -214,7 +218,8 @@ export async function createItem(input: CreateTrackedItemInput) {
     url: input.productUrl,
     target_price_minor: toMinor(input.targetPrice, input.currency),
     currency: input.currency,
-    notify_initial_below_target: true
+    notify_initial_below_target: true,
+    notify_back_in_stock: input.notifyBackInStock ?? true
   });
 }
 
@@ -226,7 +231,8 @@ export async function updateItem(id: string, input: UpdateTrackedItemInput) {
       input.targetPrice === undefined
         ? undefined
         : toMinor(input.targetPrice, current.currency),
-    status: input.status
+    status: input.status,
+    notify_back_in_stock: input.notifyBackInStock
   });
   return mapItem(updated, await client.getHistory(id, "all"));
 }

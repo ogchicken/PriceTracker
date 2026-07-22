@@ -298,6 +298,11 @@ export interface components {
             /** Currency */
             currency: string;
             /**
+             * Notify Back In Stock
+             * @default true
+             */
+            notify_back_in_stock: boolean;
+            /**
              * Notify Initial Below Target
              * @default true
              */
@@ -322,6 +327,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Notify Back In Stock */
+            notify_back_in_stock: boolean;
             /** Notify Initial Below Target */
             notify_initial_below_target: boolean;
             product: components["schemas"]["ProductResponse"];
@@ -341,6 +348,8 @@ export interface components {
         WatchStatus: "active" | "paused";
         /** WatchUpdate */
         WatchUpdate: {
+            /** Notify Back In Stock */
+            notify_back_in_stock?: boolean | null;
             /** Notify Initial Below Target */
             notify_initial_below_target?: boolean | null;
             status?: components["schemas"]["WatchStatus"] | null;

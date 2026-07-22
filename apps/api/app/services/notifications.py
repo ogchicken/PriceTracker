@@ -57,15 +57,25 @@ async def deliver_pending_notifications(
         )
         shipping = _format_money(int(payload.get("shipping_price_minor", 0)), currency)
         target = _format_money(int(payload["target_price_minor"]), currency)
-        message = EmailMessage(
-            to=notification.recipient,
-            subject=f"Price alert: {title} is now {price}",
-            html=(
+        if str(payload.get("kind")) == "back_in_stock":
+            subject = f"Back in stock: {title}"
+            body_html = (
+                f"<p><strong>{title}</strong> is back in stock at {escape(price)}.</p>"
+                f"<p>Item: {escape(item_price)} · Shipping: {escape(shipping)}</p>"
+                f'<p><a href="{url}">View product</a></p>'
+            )
+        else:
+            subject = f"Price alert: {title} is now {price}"
+            body_html = (
                 f"<p><strong>{title}</strong> is now {escape(price)}, "
                 f"at or below your target of {escape(target)}.</p>"
                 f"<p>Item: {escape(item_price)} · Shipping: {escape(shipping)}</p>"
                 f'<p><a href="{url}">View product</a></p>'
-            ),
+            )
+        message = EmailMessage(
+            to=notification.recipient,
+            subject=subject,
+            html=body_html,
             idempotency_key=notification.dedupe_key,
         )
         try:

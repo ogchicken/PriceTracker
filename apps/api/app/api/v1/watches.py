@@ -100,6 +100,7 @@ async def create_watch(
         target_price_minor=body.target_price_minor,
         currency=body.currency,
         notify_initial_below_target=body.notify_initial_below_target,
+        notify_back_in_stock=body.notify_back_in_stock,
         product=product,
     )
     session.add(watch)
@@ -177,6 +178,8 @@ async def update_watch(
                 watch.product.lease_until = None
     if "notify_initial_below_target" in changes:
         watch.notify_initial_below_target = changes["notify_initial_below_target"]
+    if "notify_back_in_stock" in changes:
+        watch.notify_back_in_stock = changes["notify_back_in_stock"]
     await session.flush()
     return watch
 
