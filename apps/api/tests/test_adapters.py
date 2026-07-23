@@ -47,8 +47,20 @@ def test_parse_and_canonicalize(
         "https://www.ebay.com/sch/i.html?_nkw=keyboard",
         "https://www.ebay.com/itm/123456789012?LH_Auction=1",
         "file:///etc/passwd",
+        # `smile.` is an Amazon-only prefix; the browser check in
+        # apps/web/src/lib/store-url.ts must agree, or the UI accepts a URL the
+        # API then rejects with a 422.
+        "https://smile.ebay.com/itm/123456789012",
+        "https://evil-amazon.com/dp/B08N5WRWNW",
     ],
 )
 def test_rejects_unsupported_or_non_product_urls(url: str) -> None:
     with pytest.raises(AdapterError):
         adapter_registry.parse(url)
+
+
+def test_accepts_http_and_canonicalizes_to_https() -> None:
+    # The browser-side check mirrors this: it must not reject http outright.
+    result = adapter_registry.parse("http://www.amazon.com/dp/B08N5WRWNW")
+
+    assert result.canonical_url == "https://www.amazon.com/dp/B08N5WRWNW"

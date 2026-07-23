@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "generate:api": "openapi-typescript ../../docs/openapi.json -o src/lib/api/contract.ts"
+    "generate:api": "openapi-typescript ../../docs/openapi.json -o src/lib/api/contract.ts",
+    "generate:marketplaces": "node scripts/generate-marketplaces.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "latest",

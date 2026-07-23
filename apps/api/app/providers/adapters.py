@@ -21,11 +21,26 @@ class NormalizedProduct:
 
 
 class StoreAdapter(abc.ABC):
-    store: Store
+    """Base for store adapters.
 
-    @abc.abstractmethod
+    ``domains`` and ``host_prefixes`` are the single source of truth for which
+    URLs PriceTracker accepts. They are exported to ``docs/marketplaces.json`` by
+    ``scripts/export_marketplaces.py`` and generated into the frontend, so the
+    browser-side check cannot drift from this one. Never restate them elsewhere.
+    """
+
+    store: Store
+    domains: frozenset[str]
+    host_prefixes: tuple[str, ...]
+
+    def base_domain(self, host: str) -> str:
+        for prefix in self.host_prefixes:
+            if host.startswith(prefix):
+                return host[len(prefix) :]
+        return host
+
     def supports_host(self, host: str) -> bool:
-        raise NotImplementedError
+        return self.base_domain(host) in self.domains
 
     @abc.abstractmethod
     def parse(self, url: str) -> NormalizedProduct:
@@ -53,45 +68,38 @@ def _safe_url(url: str) -> tuple[str, str, str, str]:
 
 class AmazonAdapter(StoreAdapter):
     store = Store.AMAZON
-    _domains = {
-        "amazon.com",
-        "amazon.ca",
-        "amazon.com.mx",
-        "amazon.com.br",
-        "amazon.co.uk",
-        "amazon.de",
-        "amazon.fr",
-        "amazon.it",
-        "amazon.es",
-        "amazon.nl",
-        "amazon.se",
-        "amazon.pl",
-        "amazon.com.au",
-        "amazon.co.jp",
-        "amazon.in",
-        "amazon.sg",
-        "amazon.ae",
-        "amazon.sa",
-    }
+    domains = frozenset(
+        {
+            "amazon.com",
+            "amazon.ca",
+            "amazon.com.mx",
+            "amazon.com.br",
+            "amazon.co.uk",
+            "amazon.de",
+            "amazon.fr",
+            "amazon.it",
+            "amazon.es",
+            "amazon.nl",
+            "amazon.se",
+            "amazon.pl",
+            "amazon.com.au",
+            "amazon.co.jp",
+            "amazon.in",
+            "amazon.sg",
+            "amazon.ae",
+            "amazon.sa",
+        }
+    )
+    host_prefixes = ("www.", "smile.", "m.")
     _product_path = re.compile(
         r"(?:^|/)(?:dp|gp/product|gp/aw/d)/([A-Z0-9]{10})(?:[/?]|$)",
         re.IGNORECASE,
     )
 
-    @staticmethod
-    def _base_domain(host: str) -> str:
-        for prefix in ("www.", "smile.", "m."):
-            if host.startswith(prefix):
-                return host[len(prefix) :]
-        return host
-
-    def supports_host(self, host: str) -> bool:
-        return self._base_domain(host) in self._domains
-
     def parse(self, url: str) -> NormalizedProduct:
         host, path, _, _ = _safe_url(url)
-        domain = self._base_domain(host)
-        if domain not in self._domains:
+        domain = self.base_domain(host)
+        if domain not in self.domains:
             raise AdapterError("unsupported Amazon region")
         match = self._product_path.search(path)
         if not match:
@@ -107,40 +115,33 @@ class AmazonAdapter(StoreAdapter):
 
 class EbayAdapter(StoreAdapter):
     store = Store.EBAY
-    _domains = {
-        "ebay.com",
-        "ebay.ca",
-        "ebay.co.uk",
-        "ebay.de",
-        "ebay.fr",
-        "ebay.it",
-        "ebay.es",
-        "ebay.com.au",
-        "ebay.at",
-        "ebay.be",
-        "ebay.ch",
-        "ebay.ie",
-        "ebay.nl",
-        "ebay.pl",
-        "ebay.com.sg",
-    }
+    domains = frozenset(
+        {
+            "ebay.com",
+            "ebay.ca",
+            "ebay.co.uk",
+            "ebay.de",
+            "ebay.fr",
+            "ebay.it",
+            "ebay.es",
+            "ebay.com.au",
+            "ebay.at",
+            "ebay.be",
+            "ebay.ch",
+            "ebay.ie",
+            "ebay.nl",
+            "ebay.pl",
+            "ebay.com.sg",
+        }
+    )
+    host_prefixes = ("www.", "m.")
     _item_path = re.compile(r"(?:^|/)itm/(?:[^/?]+/)?(\d{9,15})(?:[/?]|$)", re.IGNORECASE)
     _auction_terms = {"auction", "bid", "bidding"}
 
-    @staticmethod
-    def _base_domain(host: str) -> str:
-        for prefix in ("www.", "m."):
-            if host.startswith(prefix):
-                return host[len(prefix) :]
-        return host
-
-    def supports_host(self, host: str) -> bool:
-        return self._base_domain(host) in self._domains
-
     def parse(self, url: str) -> NormalizedProduct:
         host, path, query, fragment = _safe_url(url)
-        domain = self._base_domain(host)
-        if domain not in self._domains:
+        domain = self.base_domain(host)
+        if domain not in self.domains:
             raise AdapterError("unsupported eBay region")
         lowered_parts = f"{query}&{fragment}".lower()
         params = parse_qs(query, keep_blank_values=True)
@@ -169,6 +170,10 @@ class EbayAdapter(StoreAdapter):
 class AdapterRegistry:
     def __init__(self, adapters: list[StoreAdapter]) -> None:
         self._adapters = adapters
+
+    @property
+    def adapters(self) -> tuple[StoreAdapter, ...]:
+        return tuple(self._adapters)
 
     def parse(self, url: str) -> NormalizedProduct:
         host, _, _, _ = _safe_url(url)
