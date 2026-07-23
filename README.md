@@ -295,9 +295,15 @@ before launch.
 - **The web app throws `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is required`:**
   fill the Clerk keys in `apps/web/.env.local` (host dev) or `.env` (Compose);
   there is no demo fallback.
-- **API cannot connect from a container:** host development uses `localhost`,
-  while Compose overrides database and Redis hosts to `postgres` and `redis`.
-  Do not put `localhost` into container-only connection strings.
+- **API cannot connect from a container:** host development reaches PostgreSQL
+  and Redis at `127.0.0.1`, while Compose overrides those hosts to `postgres`
+  and `redis`. Do not put a loopback address into container-only connection
+  strings.
+- **Every database or Redis call takes about two extra seconds:** the
+  connection URL is using `localhost`. Compose publishes these ports on IPv4
+  only, and resolving `localhost` tries `::1` first, so each new connection
+  stalls on a refused IPv6 attempt before falling back — most visible on
+  Windows. Use `127.0.0.1`, as `.env.example` does.
 - **Migrations fail on a new database:** confirm PostgreSQL is healthy with
   `docker compose --env-file .env -f infra/compose.yaml ps`, then verify
   `DATABASE_URL`.

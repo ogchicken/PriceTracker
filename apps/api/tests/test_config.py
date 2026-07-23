@@ -72,6 +72,47 @@ def test_production_api_rejects_insecure_public_origin() -> None:
         Settings(**values)
 
 
+@pytest.mark.parametrize(
+    "database_url",
+    [
+        "postgresql://user:password@localhost:5432/pricetracker",
+        # The development defaults ship 127.0.0.1, so a guard keyed on the
+        # literal string "localhost" would let a copied .env reach production.
+        "postgresql://user:password@127.0.0.1:5432/pricetracker",
+        "postgresql://user:password@127.1.2.3:5432/pricetracker",
+        "postgresql://user:password@[::1]:5432/pricetracker",
+        "postgresql://user:password@0.0.0.0:5432/pricetracker",
+    ],
+)
+def test_production_rejects_a_database_on_this_machine(database_url: str) -> None:
+    values = production_api_settings()
+    values["database_url"] = database_url
+
+    with pytest.raises(ValidationError, match="may not point at this machine"):
+        Settings(**values)
+
+
+@pytest.mark.parametrize(
+    "redis_url",
+    ["redis://localhost:6379/0", "redis://127.0.0.1:6379/0", "redis://[::1]:6379/0"],
+)
+def test_production_rejects_a_redis_on_this_machine(redis_url: str) -> None:
+    values = production_api_settings()
+    values["redis_url"] = redis_url
+
+    with pytest.raises(ValidationError, match="may not point at this machine"):
+        Settings(**values)
+
+
+def test_production_allows_a_remote_host_that_merely_contains_a_local_name() -> None:
+    # "localhost" as a substring of a real hostname is not a loopback target;
+    # the previous substring check rejected this.
+    values = production_api_settings()
+    values["database_url"] = "postgresql://user:password@localhost.db.example.com/pricetracker"
+
+    assert Settings(**values).database_url.startswith("postgresql+asyncpg://")
+
+
 def test_production_rejects_fake_price_provider() -> None:
     values = production_api_settings()
     values["price_provider"] = "fake"

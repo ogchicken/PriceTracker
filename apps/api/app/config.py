@@ -1,10 +1,38 @@
 from __future__ import annotations
 
+import ipaddress
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_LOCAL_HOSTNAMES = {"localhost", "localhost.localdomain"}
+
+
+def points_at_this_machine(url: str) -> bool:
+    """Whether a connection URL targets the local machine.
+
+    Matched by resolved meaning rather than by spelling: the development
+    defaults use 127.0.0.1 (Compose publishes on IPv4 only, and resolving
+    localhost costs a failed ::1 attempt first), so a check for the literal
+    string "localhost" would wave those same defaults through in production.
+    """
+    try:
+        host = urlsplit(url).hostname
+    except ValueError:
+        return False
+    if not host:
+        return False
+    host = host.lower().rstrip(".")
+    if host in _LOCAL_HOSTNAMES:
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_loopback or address.is_unspecified
 
 
 class Settings(BaseSettings):
@@ -127,8 +155,11 @@ class Settings(BaseSettings):
             missing = [name for name, value in required.items() if not value]
             if missing:
                 raise ValueError(f"missing required deployment settings: {', '.join(missing)}")
-            if "localhost" in self.database_url or "localhost" in self.redis_url:
-                raise ValueError("production data services may not use localhost")
+            if points_at_this_machine(self.database_url) or points_at_this_machine(self.redis_url):
+                raise ValueError(
+                    "production data services may not point at this machine "
+                    "(localhost, a loopback address, or 0.0.0.0)"
+                )
             if validates_api:
                 if "example.clerk.accounts.dev" in self.clerk_issuer:
                     raise ValueError("a real Clerk issuer is required outside development and test")
