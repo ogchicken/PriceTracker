@@ -181,10 +181,6 @@ async def update_watch(
     if "notify_back_in_stock" in changes:
         watch.notify_back_in_stock = changes["notify_back_in_stock"]
     await session.flush()
-    # The flush leaves `updated_at` expired, because its value comes from the
-    # server-side `onupdate`. Serialising WatchResponse would otherwise touch an
-    # expired attribute outside the async greenlet and fail with MissingGreenlet.
-    await session.refresh(watch, ["updated_at"])
     return watch
 
 

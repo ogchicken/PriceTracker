@@ -54,7 +54,14 @@ def override_settings(**changes: Any) -> Iterator[None]:
     Copies the real settings rather than rebuilding them, so only the named
     fields differ from what the application actually runs with.
     """
-    overridden = get_settings().model_copy(update=changes)
+    settings = get_settings()
+    # model_copy(update=...) skips validation and will happily attach a field
+    # that does not exist, leaving the real setting at its default and the test
+    # silently asserting nothing.
+    unknown = sorted(set(changes) - set(type(settings).model_fields))
+    if unknown:
+        raise AttributeError(f"Settings has no field(s): {', '.join(unknown)}")
+    overridden = settings.model_copy(update=changes)
     app.dependency_overrides[get_settings] = lambda: overridden
     try:
         yield

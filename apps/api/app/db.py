@@ -26,6 +26,14 @@ NAMING_CONVENTION = {
 class Base(AsyncAttrs, DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
+    # Fetch server-generated values (the TimestampMixin `server_default` and
+    # `onupdate`) with the INSERT/UPDATE itself via RETURNING, instead of leaving
+    # them expired for a later lazy load. Under asyncio that lazy load happens
+    # outside the greenlet whenever a route serialises a just-flushed model, and
+    # raises MissingGreenlet — a 500 that no individual route can be trusted to
+    # remember to avoid.
+    __mapper_args__ = {"eager_defaults": True}
+
 
 settings = get_settings()
 engine: AsyncEngine = create_async_engine(

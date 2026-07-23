@@ -33,6 +33,16 @@ class StoreAdapter(abc.ABC):
     domains: frozenset[str]
     host_prefixes: tuple[str, ...]
 
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        # `supports_host` reads these, but they are annotations rather than
+        # abstract methods, so ABC cannot enforce them. Without this an adapter
+        # that omits one imports and instantiates fine, then raises
+        # AttributeError on the first URL a user submits.
+        super().__init_subclass__(**kwargs)
+        missing = [name for name in ("store", "domains", "host_prefixes") if not hasattr(cls, name)]
+        if missing:
+            raise TypeError(f"{cls.__name__} must define {', '.join(missing)}")
+
     def base_domain(self, host: str) -> str:
         for prefix in self.host_prefixes:
             if host.startswith(prefix):

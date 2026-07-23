@@ -47,7 +47,7 @@ jobs:
       PRICETRACKER_DATABASE_URL: postgresql+asyncpg://pricetracker:pricetracker@localhost:5432/pricetracker_test
       # pytest uses its own database on the same server, so `alembic check` above
       # runs against a schema the suite never drops or truncates.
-      PRICETRACKER_TEST_DATABASE_URL: postgresql+asyncpg://pricetracker:pricetracker@localhost:5432/pricetracker_pytest
+      PRICETRACKER_TEST_DATABASE_URL: postgresql+asyncpg://pricetracker:pricetracker@127.0.0.1:5432/pricetracker_pytest
       PRICETRACKER_REDIS_URL: redis://localhost:6379/0
       PRICETRACKER_CELERY_BROKER_URL: redis://localhost:6379/1
       PRICETRACKER_CELERY_RESULT_BACKEND: redis://localhost:6379/2

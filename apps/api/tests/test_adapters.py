@@ -1,7 +1,12 @@
 import pytest
 
 from app.models import Store
-from app.providers.adapters import AdapterError, adapter_registry
+from app.providers.adapters import (
+    AdapterError,
+    NormalizedProduct,
+    StoreAdapter,
+    adapter_registry,
+)
 
 
 @pytest.mark.parametrize(
@@ -64,3 +69,17 @@ def test_accepts_http_and_canonicalizes_to_https() -> None:
     result = adapter_registry.parse("http://www.amazon.com/dp/B08N5WRWNW")
 
     assert result.canonical_url == "https://www.amazon.com/dp/B08N5WRWNW"
+
+
+def test_adapter_subclass_must_declare_its_host_rules() -> None:
+    # `supports_host` is concrete and reads these, so ABC cannot enforce them.
+    # Without the __init_subclass__ guard an incomplete adapter imports fine and
+    # raises AttributeError on the first URL a user submits.
+    with pytest.raises(TypeError, match="host_prefixes"):
+
+        class Incomplete(StoreAdapter):
+            store = Store.AMAZON
+            domains = frozenset({"example.com"})
+
+            def parse(self, url: str) -> NormalizedProduct:  # pragma: no cover
+                raise AdapterError("unused")

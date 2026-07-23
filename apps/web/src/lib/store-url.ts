@@ -22,6 +22,12 @@ export function marketplaceForUrl(value: string): SupportedMarketplace | null {
   }
   // The API accepts either scheme and canonicalises to https itself.
   if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+  // `_safe_url` rejects any authority carrying credentials or an explicit port.
+  // Read that from the raw input rather than url.port, because `new URL()` drops
+  // a port equal to the scheme default — so url.port is "" for `:443`, which the
+  // adapter still rejects.
+  const authority = value.slice(value.indexOf("://") + 3).split(/[/?#]/)[0] ?? "";
+  if (authority.includes("@") || /:\d*$/.test(authority)) return null;
   // `\.+$`, not `\.$`: the adapter uses Python's rstrip("."), which removes every
   // trailing root-label dot. Stripping only one would reject a host the API takes.
   const hostname = url.hostname.toLowerCase().replace(/\.+$/, "");

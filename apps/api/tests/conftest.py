@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 from collections.abc import AsyncIterator, Callable, Iterator
 
 import httpx
@@ -52,14 +53,15 @@ from app.providers.brightdata import BrightDataClient  # noqa: E402
 PRIMARY_IDENTITY = AuthUser(clerk_user_id="user_test_primary", email="primary@example.com")
 OTHER_IDENTITY = AuthUser(clerk_user_id="user_test_other", email="other@example.com")
 
-UNREACHABLE_DATABASE_HINT = (
+PREPARE_FAILED_HINT = (
     # Rendered with the password hidden: this message is printed on failure and
     # would otherwise put the database credentials into CI logs.
-    "Cannot reach the PostgreSQL server for "
+    "Could not prepare the test database "
     f"{make_url(TEST_DATABASE_URL).render_as_string(hide_password=True)}.\n"
-    "Start it with `make infra-up` (or `docker compose --env-file .env "
-    "-f infra/compose.yaml up -d postgres`), or point "
-    "PRICETRACKER_TEST_DATABASE_URL at another server."
+    "If the server is not running, start it with `make infra-up` (or `docker "
+    "compose --env-file .env -f infra/compose.yaml up -d postgres`), or point "
+    "PRICETRACKER_TEST_DATABASE_URL at another server. Otherwise the underlying "
+    "error below is the real cause."
 )
 
 
@@ -70,16 +72,26 @@ async def _create_database_if_missing(url: URL) -> None:
     ``CREATE DATABASE`` cannot run inside a transaction or from within the
     database being created.
     """
+    database = url.database or ""
+    # CREATE DATABASE cannot take a bound parameter for its identifier, so the
+    # name is interpolated. Constrain it first: this value comes from an
+    # environment variable, and an embedded quote would append arbitrary DDL to a
+    # statement running with AUTOCOMMIT on the maintenance database.
+    if not re.fullmatch(r"[A-Za-z0-9_]{1,63}", database):
+        raise ValueError(
+            f"refusing to create test database {database!r}: the name must be 1-63 "
+            "characters of ASCII letters, digits, or underscores"
+        )
     admin_engine = create_async_engine(
         url.set(database="postgres"), isolation_level="AUTOCOMMIT", poolclass=NullPool
     )
     try:
         async with admin_engine.connect() as conn:
             exists = await conn.scalar(
-                text("SELECT 1 FROM pg_database WHERE datname = :name"), {"name": url.database}
+                text("SELECT 1 FROM pg_database WHERE datname = :name"), {"name": database}
             )
             if not exists:
-                await conn.execute(text(f'CREATE DATABASE "{url.database}"'))
+                await conn.execute(text(f'CREATE DATABASE "{database}"'))
     finally:
         await admin_engine.dispose()
 
@@ -100,9 +112,12 @@ async def _prepare_database() -> None:
     await _reset_schema(url)
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def prepared_database() -> None:
     """Create the test database if needed and reset its schema, once per run.
+
+    Not autouse either: pulled in by ``engine``, so a run that selects only
+    database-free tests never contacts PostgreSQL at all.
 
     Runs in its own short-lived event loop so no connection outlives it; the
     per-test engines below open fresh connections in the loop that uses them.
@@ -114,8 +129,10 @@ def prepared_database() -> None:
         # way SQLAlchemy's do — a wrong password raises asyncpg's
         # InvalidPasswordError, which is not a SQLAlchemyError — and letting any
         # of them escape produces an identical raw traceback on every single
-        # test instead of one actionable message.
-        pytest.exit(f"{UNREACHABLE_DATABASE_HINT}\n\n{type(exc).__name__}: {exc}", returncode=1)
+        # test instead of one actionable message. The hint names connectivity as
+        # a likely cause rather than the cause, since a schema or permissions
+        # failure lands here too.
+        pytest.exit(f"{PREPARE_FAILED_HINT}\n\n{type(exc).__name__}: {exc}", returncode=1)
 
 
 async def _truncate_all(engine: AsyncEngine) -> None:
@@ -124,9 +141,15 @@ async def _truncate_all(engine: AsyncEngine) -> None:
         await conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
 
 
-@pytest_asyncio.fixture(autouse=True)
+@pytest_asyncio.fixture
 async def engine(prepared_database: None) -> AsyncIterator[AsyncEngine]:
     """A per-test engine over an empty schema.
+
+    Not autouse: the URL-parsing, normalisation, and config tests touch no
+    database, and making them open a connection and truncate eight tables would
+    put a PostgreSQL server between a contributor and a pure-function test suite.
+    ``db_session`` and ``client`` depend on it, so anything that can write state
+    still gets a clean schema.
 
     Truncating on setup rather than teardown means an interrupted run cannot leak
     rows into the next one. ``NullPool`` keeps connections from being reused
@@ -213,8 +236,15 @@ def client(engine: AsyncEngine) -> Iterator[TestClient]:
     deterministic state and the suite needs no Redis server.
     """
     with TestClient(app) as test_client:
+        # Restored on teardown: `app` is a module-level singleton, and a test that
+        # installs FailingRedis would otherwise leave it there for whatever runs
+        # next.
+        previous = getattr(app.state, "redis", None)
         app.state.redis = FakeRedis()
-        yield test_client
+        try:
+            yield test_client
+        finally:
+            app.state.redis = previous
 
 
 @pytest.fixture

@@ -34,6 +34,18 @@ describe("marketplaceForUrl", () => {
     expect(marketplaceForUrl("https://www.amazon.com./dp/B08N5WRWNW")).toBe("amazon");
   });
 
+  it("rejects credentials and explicit ports, which the API also rejects", () => {
+    // Regression: `_safe_url` refuses any authority with userinfo or a port, so
+    // accepting these here produced a 422 the user saw as a generic failure.
+    expect(marketplaceForUrl("https://user:pass@www.amazon.com/dp/B08N5WRWNW")).toBeNull();
+    expect(marketplaceForUrl("https://user@www.amazon.com/dp/B08N5WRWNW")).toBeNull();
+    expect(marketplaceForUrl("https://www.amazon.com:8443/dp/B08N5WRWNW")).toBeNull();
+    // new URL() drops a port equal to the scheme default, so url.port is "" here
+    // and only the raw authority reveals it.
+    expect(marketplaceForUrl("https://www.amazon.com:443/dp/B08N5WRWNW")).toBeNull();
+    expect(marketplaceForUrl("http://www.amazon.com:80/dp/B08N5WRWNW")).toBeNull();
+  });
+
   it("rejects non-marketplace and malformed URLs", () => {
     expect(marketplaceForUrl("https://example.com/dp/B08N5WRWNW")).toBeNull();
     expect(marketplaceForUrl("https://notamazon.com/dp/B08N5WRWNW")).toBeNull();
