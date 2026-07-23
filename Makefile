@@ -4,13 +4,17 @@
 
 COMPOSE := docker compose --env-file .env -f infra/compose.yaml
 UV_RUN := uv run --project apps/api
+# pytest discovers [tool.pytest.ini_options] from the working directory upwards,
+# and there is no pytest configuration at the repository root, so the suite has
+# to run from apps/api or asyncio_mode is silently left off.
+UV_TEST := uv run --project apps/api --directory apps/api
 PNPM := pnpm --dir apps/web
 
 .DEFAULT_GOAL := help
 
 .PHONY: help setup env infra-up infra-down deploy-check deploy \
 	dev-api dev-worker dev-scheduler dev-web \
-	migrate migration lint typecheck test build compose-validate compose-build clean
+	migrate migrate-check migration lint typecheck test build compose-validate compose-build clean
 
 help:
 	@echo "setup             Install frontend and backend dependencies"
@@ -23,6 +27,7 @@ help:
 	@echo "dev-scheduler     Run the Celery beat scheduler"
 	@echo "dev-web           Run the Next.js development server"
 	@echo "migrate           Apply database migrations"
+	@echo "migrate-check     Fail if the models and migrations have drifted"
 	@echo "migration m=name  Create an Alembic migration"
 	@echo "lint/typecheck    Check both applications"
 	@echo "test/build        Test both apps / build containers and web"
@@ -71,6 +76,9 @@ dev-web:
 migrate:
 	$(UV_RUN) alembic -c apps/api/alembic.ini upgrade head
 
+migrate-check:
+	$(UV_RUN) alembic -c apps/api/alembic.ini check
+
 migration:
 	@test -n "$(m)" || (echo "Usage: make migration m=describe_change" && exit 1)
 	$(UV_RUN) alembic -c apps/api/alembic.ini revision --autogenerate -m "$(m)"
@@ -85,7 +93,7 @@ typecheck:
 	$(PNPM) typecheck
 
 test:
-	$(UV_RUN) pytest
+	$(UV_TEST) pytest
 	$(PNPM) test
 
 build:

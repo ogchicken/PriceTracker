@@ -29,14 +29,18 @@ output, or package-manager caches.
 
 ## Checks
 
-Backend:
+Backend (start PostgreSQL first — the suite needs a real server):
 
 ```powershell
+docker compose --env-file .env -f infra/compose.yaml up -d postgres
 uv run --project apps/api --with ruff ruff check apps/api
 uv run --project apps/api --with ruff ruff format --check apps/api
 uv run --project apps/api --with mypy mypy apps/api/app
-uv run --project apps/api pytest
+uv run --project apps/api --directory apps/api pytest
 uv run --project apps/api alembic -c apps/api/alembic.ini upgrade head
+uv run --project apps/api alembic -c apps/api/alembic.ini check
+uv run --project apps/api python apps/api/scripts/export_openapi.py --check
+uv run --project apps/api python apps/api/scripts/export_marketplaces.py --check
 ```
 
 Frontend:
@@ -46,6 +50,8 @@ pnpm --dir apps/web lint
 pnpm --dir apps/web typecheck
 pnpm --dir apps/web test
 pnpm --dir apps/web build
+pnpm --dir apps/web generate:api
+pnpm --dir apps/web generate:marketplaces
 ```
 
 Infrastructure:
@@ -54,12 +60,21 @@ Infrastructure:
 docker compose --env-file .env -f infra/compose.yaml config --quiet
 ```
 
-Run integration tests with isolated test databases. Tests must not call Bright
-Data or Resend by default.
+The backend suite runs against PostgreSQL, not SQLite: the repository layer uses
+`INSERT ... ON CONFLICT` and the tracking pipeline uses `FOR UPDATE SKIP LOCKED`,
+so an in-memory stand-in cannot exercise any write path. It isolates itself in
+its own `pricetracker_pytest` database on whichever server
+`PRICETRACKER_TEST_DATABASE_URL` names (defaulting to the Compose one), creating
+it on first run and resetting the schema on every run — your development
+database is never touched. Tests must not call Bright Data or Resend by default;
+prefer real requests through `authed_client` over reaching into private
+functions.
 
 ## Database changes
 
 - Change the ORM models and add an Alembic migration in the same pull request.
+  CI enforces this with `alembic check`; run it locally against a database at
+  head before pushing.
 - Generate with `alembic revision --autogenerate`, then manually review both
   `upgrade()` and `downgrade()`.
 - Prefer additive, backward-compatible expand/migrate/contract changes.
@@ -71,6 +86,12 @@ Data or Resend by default.
 - Keep HTTP routes under `/api/v1` and preserve stable error shapes.
 - Enforce ownership and limits in the API, never only in the browser.
 - Update OpenAPI-facing schemas and client contract tests together.
+- Supported store hosts live in exactly one place: the adapters in
+  `apps/api/app/providers/adapters.py`. Add a marketplace or region there, then
+  regenerate `docs/marketplaces.json` and
+  `apps/web/src/lib/api/marketplaces.ts`. Never hand-edit the generated module or
+  restate a domain list in `apps/web/src/lib/store-url.ts` — the browser check
+  must not accept URLs the API rejects.
 - Keep secrets out of client components and `NEXT_PUBLIC_*` variables.
 - Meet keyboard, contrast, semantic HTML, and responsive-layout requirements.
 

@@ -33,6 +33,8 @@ trust boundaries and data flows.
 apps/api/              FastAPI, Celery, SQLAlchemy, and Alembic
 apps/web/              Next.js application
 docs/                  Architecture, operations, deployment, secrets, and legal drafts
+docs/openapi.json      Generated API contract; the frontend client is generated from it
+docs/marketplaces.json Generated list of supported store hosts, exported from the API adapters
 infra/compose.yaml     The full Docker Compose stack (dev and production)
 infra/Caddyfile        Reverse proxy and TLS termination (production profile)
 scripts/deploy.sh      One-command deploy/redeploy on the VPS
@@ -177,7 +179,14 @@ uv run --project apps/api alembic -c apps/api/alembic.ini upgrade head
 
 # Inspect the current revision
 uv run --project apps/api alembic -c apps/api/alembic.ini current
+
+# Fail if the models and the migration history have drifted apart
+uv run --project apps/api alembic -c apps/api/alembic.ini check
 ```
+
+`alembic check` is what enforces the rule above: it compares the ORM metadata
+against a database already migrated to head and fails when a model change has no
+matching migration. CI runs it on every pull request.
 
 In production, migrations run as a dedicated one-shot Compose service
 (`migrate`) invoked by `scripts/deploy.sh` before the stack restarts — never in
@@ -186,11 +195,23 @@ migrations.
 
 ## Quality checks
 
+The backend suite runs against a real PostgreSQL server, so start the
+development infrastructure first:
+
+```powershell
+docker compose --env-file .env -f infra/compose.yaml up -d postgres
+```
+
+It uses its own `pricetracker_pytest` database on that server, creating it on
+first run and resetting the schema each run, so it never touches your
+development data. Point `PRICETRACKER_TEST_DATABASE_URL` at a different server if
+you prefer.
+
 ```powershell
 uv run --project apps/api --with ruff ruff check apps/api
 uv run --project apps/api --with ruff ruff format --check apps/api
 uv run --project apps/api --with mypy mypy --config-file apps/api/pyproject.toml apps/api/app
-uv run --project apps/api pytest
+uv run --project apps/api --directory apps/api pytest
 
 pnpm --dir apps/web lint
 pnpm --dir apps/web typecheck
@@ -198,15 +219,23 @@ pnpm --dir apps/web test
 pnpm --dir apps/web test:e2e
 pnpm --dir apps/web build
 
+uv run --project apps/api alembic -c apps/api/alembic.ini check
 uv run --project apps/api python apps/api/scripts/export_openapi.py --check
+uv run --project apps/api python apps/api/scripts/export_marketplaces.py --check
 pnpm --dir apps/web generate:api
+pnpm --dir apps/web generate:marketplaces
 
 docker compose --env-file .env -f infra/compose.yaml config --quiet
 ```
 
+`pytest` needs `--directory apps/api`: it discovers its configuration from the
+working directory upwards, and there is none at the repository root, so running
+it from there silently disables `asyncio_mode` and skips every async test.
+
 CI performs equivalent backend, frontend, migration, Compose, and image-build
-checks. It also rejects drift in `docs/openapi.json` and the generated frontend
-contract at `apps/web/src/lib/api/contract.ts`.
+checks. It also rejects model/migration drift and drift in `docs/openapi.json`,
+`docs/marketplaces.json`, and the generated frontend modules at
+`apps/web/src/lib/api/contract.ts` and `apps/web/src/lib/api/marketplaces.ts`.
 
 ## API documentation
 
@@ -266,9 +295,15 @@ before launch.
 - **The web app throws `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is required`:**
   fill the Clerk keys in `apps/web/.env.local` (host dev) or `.env` (Compose);
   there is no demo fallback.
-- **API cannot connect from a container:** host development uses `localhost`,
-  while Compose overrides database and Redis hosts to `postgres` and `redis`.
-  Do not put `localhost` into container-only connection strings.
+- **API cannot connect from a container:** host development reaches PostgreSQL
+  and Redis at `127.0.0.1`, while Compose overrides those hosts to `postgres`
+  and `redis`. Do not put a loopback address into container-only connection
+  strings.
+- **Every database or Redis call takes about two extra seconds:** the
+  connection URL is using `localhost`. Compose publishes these ports on IPv4
+  only, and resolving `localhost` tries `::1` first, so each new connection
+  stalls on a refused IPv6 attempt before falling back — most visible on
+  Windows. Use `127.0.0.1`, as `.env.example` does.
 - **Migrations fail on a new database:** confirm PostgreSQL is healthy with
   `docker compose --env-file .env -f infra/compose.yaml ps`, then verify
   `DATABASE_URL`.

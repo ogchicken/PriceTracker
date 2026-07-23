@@ -28,7 +28,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-  "aiosqlite>=0.20",
   "pytest>=8.3",
   "pytest-asyncio>=0.25",
   "httpx>=0.28",
@@ -39,6 +38,10 @@ packages = ["app"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# Fixtures and tests share one per-test event loop, so an asyncpg connection is
+# never handed between loops.
+asyncio_default_fixture_loop_scope = "function"
+asyncio_default_test_loop_scope = "function"
 testpaths = ["tests"]
 
 [tool.ruff]
