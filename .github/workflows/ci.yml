@@ -80,13 +80,22 @@ jobs:
       - name: Apply migrations to clean database
         run: uv run alembic upgrade head
 
+      # Must follow `upgrade head`: `alembic check` compares the live schema at
+      # the current revision against the ORM metadata. Migrations are applied to
+      # PRICETRACKER_DATABASE_URL, which pytest never touches (it uses its own
+      # PRICETRACKER_TEST_DATABASE_URL database), so the two cannot interfere.
+      - name: Check for model and migration drift
+        run: uv run alembic check
+
       - name: Test backend
         run: |
           mkdir -p ../../reports
           uv run pytest --junitxml=../../reports/backend-junit.xml
 
       - name: Check generated API contract
-        run: uv run python scripts/export_openapi.py --check
+        run: |
+          uv run python scripts/export_openapi.py --check
+          uv run python scripts/export_marketplaces.py --check
 
       - name: Upload backend test report
         if: always()
@@ -120,7 +129,8 @@ jobs:
       - name: Check generated frontend API types
         run: |
           pnpm --dir apps/web generate:api
-          git diff --exit-code -- apps/web/src/lib/api/contract.ts
+          pnpm --dir apps/web generate:marketplaces
+          git diff --exit-code -- apps/web/src/lib/api/contract.ts apps/web/src/lib/api/marketplaces.ts
 
       - name: Lint frontend
         run: pnpm --dir apps/web lint
