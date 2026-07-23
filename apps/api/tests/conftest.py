@@ -11,7 +11,6 @@ from fastapi.testclient import TestClient
 from redis.exceptions import RedisError
 from sqlalchemy import text
 from sqlalchemy.engine import URL, make_url
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -110,8 +109,13 @@ def prepared_database() -> None:
     """
     try:
         asyncio.run(_prepare_database())
-    except (OSError, SQLAlchemyError) as exc:
-        pytest.exit(f"{UNREACHABLE_DATABASE_HINT}\n\n{exc}", returncode=1)
+    except Exception as exc:
+        # Deliberately broad. Driver-level failures do not share a base class the
+        # way SQLAlchemy's do — a wrong password raises asyncpg's
+        # InvalidPasswordError, which is not a SQLAlchemyError — and letting any
+        # of them escape produces an identical raw traceback on every single
+        # test instead of one actionable message.
+        pytest.exit(f"{UNREACHABLE_DATABASE_HINT}\n\n{type(exc).__name__}: {exc}", returncode=1)
 
 
 async def _truncate_all(engine: AsyncEngine) -> None:
