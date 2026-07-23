@@ -39,6 +39,10 @@ packages = ["app"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# Fixtures and tests share one per-test event loop, so an asyncpg connection is
+# never handed between loops.
+asyncio_default_fixture_loop_scope = "function"
+asyncio_default_test_loop_scope = "function"
 testpaths = ["tests"]
 
 [tool.ruff]

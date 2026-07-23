@@ -11,6 +11,12 @@ from sqlalchemy.orm import selectinload
 from app.models import StoreProduct, User, Watch, WebhookEvent
 from app.providers.adapters import NormalizedProduct
 
+# Without this, an upsert whose row is already in the session's identity map
+# returns the stale in-memory instance instead of what RETURNING just produced,
+# so callers can read pre-upsert values (for example a product's `active` flag or
+# `currency`) that no longer match the database.
+POPULATE_EXISTING = {"populate_existing": True}
+
 
 async def record_webhook_event(
     session: AsyncSession,
@@ -62,7 +68,7 @@ async def upsert_user(
         )
         .returning(User)
     )
-    result = await session.execute(statement)
+    result = await session.execute(statement, execution_options=POPULATE_EXISTING)
     return result.scalar_one()
 
 
@@ -95,7 +101,7 @@ async def upsert_store_product(
         )
         .returning(StoreProduct)
     )
-    result = await session.execute(statement)
+    result = await session.execute(statement, execution_options=POPULATE_EXISTING)
     return result.scalar_one()
 
 
