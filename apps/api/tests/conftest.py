@@ -60,9 +60,29 @@ PREPARE_FAILED_HINT = (
     f"{make_url(TEST_DATABASE_URL).render_as_string(hide_password=True)}.\n"
     "If the server is not running, start it with `make infra-up` (or `docker "
     "compose --env-file .env -f infra/compose.yaml up -d postgres`), or point "
-    "PRICETRACKER_TEST_DATABASE_URL at another server. Otherwise the underlying "
-    "error below is the real cause."
+    "PRICETRACKER_TEST_DATABASE_URL at another server using a database whose "
+    "name ends in `_pytest`. Otherwise the underlying error below is the real cause."
 )
+
+
+def _validate_test_database_url(url: URL) -> str:
+    """Return a test-only database name or refuse destructive setup.
+
+    Both the session reset and per-test truncation destroy application data.
+    Requiring an unmistakable suffix makes a copied development or production
+    URL fail before the suite opens a connection.
+    """
+    database = url.database or ""
+    if not re.fullmatch(r"[A-Za-z0-9_]{1,63}", database):
+        raise ValueError(
+            f"refusing to use test database {database!r}: the name must be 1-63 "
+            "characters of ASCII letters, digits, or underscores"
+        )
+    if not database.endswith("_pytest"):
+        raise ValueError(
+            f"refusing to reset database {database!r}: test database names must end in `_pytest`"
+        )
+    return database
 
 
 async def _create_database_if_missing(url: URL) -> None:
@@ -72,16 +92,9 @@ async def _create_database_if_missing(url: URL) -> None:
     ``CREATE DATABASE`` cannot run inside a transaction or from within the
     database being created.
     """
-    database = url.database or ""
     # CREATE DATABASE cannot take a bound parameter for its identifier, so the
-    # name is interpolated. Constrain it first: this value comes from an
-    # environment variable, and an embedded quote would append arbitrary DDL to a
-    # statement running with AUTOCOMMIT on the maintenance database.
-    if not re.fullmatch(r"[A-Za-z0-9_]{1,63}", database):
-        raise ValueError(
-            f"refusing to create test database {database!r}: the name must be 1-63 "
-            "characters of ASCII letters, digits, or underscores"
-        )
+    # name is interpolated only after the validator has constrained it.
+    database = _validate_test_database_url(url)
     admin_engine = create_async_engine(
         url.set(database="postgres"), isolation_level="AUTOCOMMIT", poolclass=NullPool
     )
@@ -97,6 +110,7 @@ async def _create_database_if_missing(url: URL) -> None:
 
 
 async def _reset_schema(url: URL) -> None:
+    _validate_test_database_url(url)
     engine = create_async_engine(url, poolclass=NullPool)
     try:
         async with engine.begin() as conn:
@@ -136,6 +150,7 @@ def prepared_database() -> None:
 
 
 async def _truncate_all(engine: AsyncEngine) -> None:
+    _validate_test_database_url(engine.url)
     tables = ", ".join(f'"{table.name}"' for table in Base.metadata.sorted_tables)
     async with engine.begin() as conn:
         await conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))

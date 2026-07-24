@@ -65,10 +65,11 @@ The backend suite runs against PostgreSQL, not SQLite: the repository layer uses
 so an in-memory stand-in cannot exercise any write path. It isolates itself in
 its own `pricetracker_pytest` database on whichever server
 `PRICETRACKER_TEST_DATABASE_URL` names (defaulting to the Compose one), creating
-it on first run and resetting the schema on every run — your development
-database is never touched. Tests must not call Bright Data or Resend by default;
-prefer real requests through `authed_client` over reaching into private
-functions.
+it on first run and resetting the schema on every run. The database name must
+end in `_pytest`; the suite refuses to reset or truncate any other database, so
+your development data is never touched. Tests must not call Bright Data or
+Resend by default; prefer real requests through `authed_client` over reaching
+into private functions.
 
 ## Database changes
 

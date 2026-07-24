@@ -48,6 +48,11 @@ testpaths = ["tests"]
 target-version = "py312"
 line-length = 100
 
+[tool.ruff.lint]
+# Ruff 0.16 broadened its implicit defaults. Keep the established project
+# policy explicit so `uv run --with ruff` is stable when CI resolves "latest".
+select = ["E4", "E7", "E9", "F"]
+
 [tool.mypy]
 python_version = "3.12"
 check_untyped_defs = true
