@@ -32,13 +32,29 @@ describe("marketplaceForUrl", () => {
 
   it("tolerates trailing root-label dots, as the API's rstrip does", () => {
     expect(marketplaceForUrl("https://www.amazon.com./dp/B08N5WRWNW")).toBe("amazon");
+    expect(marketplaceForUrl("HTTPS://WWW.AMAZON.COM/dp/B08N5WRWNW")).toBe("amazon");
+  });
+
+  it("rejects hosts that the browser normalises differently from the API", () => {
+    expect(marketplaceForUrl("https://www.amazon%2ecom/dp/B08N5WRWNW")).toBeNull();
+    expect(marketplaceForUrl("https://www。amazon。com/dp/B08N5WRWNW")).toBeNull();
+    expect(marketplaceForUrl("https://www.amazon.com\\dp/B08N5WRWNW")).toBeNull();
+    expect(marketplaceForUrl("https://www.amazon.com ")).toBeNull();
+    expect(marketplaceForUrl("https://www.ama\tzon.com/dp/B08N5WRWNW")).toBeNull();
+    expect(marketplaceForUrl("https://www.amazon.com/dp/B08N5WRWNW\n")).toBeNull();
+    expect(marketplaceForUrl("https://www.amazon.com/dp/B08N5WRWNW ")).toBeNull();
+    expect(marketplaceForUrl("https://www.amazon.com/dp/B08N5WRWNW?tag=value ")).toBeNull();
+    expect(marketplaceForUrl("https://www.amazon.com/dp/B08N5WRWNW#fragment ")).toBeNull();
   });
 
   it("rejects credentials and explicit ports, which the API also rejects", () => {
     // Regression: `_safe_url` refuses any authority with userinfo or a port, so
     // accepting these here produced a 422 the user saw as a generic failure.
+    expect(marketplaceForUrl("https://@www.amazon.com/dp/B08N5WRWNW")).toBeNull();
+    expect(marketplaceForUrl("https://:@www.amazon.com/dp/B08N5WRWNW")).toBeNull();
     expect(marketplaceForUrl("https://user:pass@www.amazon.com/dp/B08N5WRWNW")).toBeNull();
     expect(marketplaceForUrl("https://user@www.amazon.com/dp/B08N5WRWNW")).toBeNull();
+    expect(marketplaceForUrl("https://www.amazon.com:/dp/B08N5WRWNW")).toBeNull();
     expect(marketplaceForUrl("https://www.amazon.com:8443/dp/B08N5WRWNW")).toBeNull();
     // new URL() drops a port equal to the scheme default, so url.port is "" here
     // and only the raw authority reveals it.

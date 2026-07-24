@@ -205,7 +205,8 @@ docker compose --env-file .env -f infra/compose.yaml up -d postgres
 It uses its own `pricetracker_pytest` database on that server, creating it on
 first run and resetting the schema each run, so it never touches your
 development data. Point `PRICETRACKER_TEST_DATABASE_URL` at a different server if
-you prefer.
+you prefer, but the database name must end in `_pytest`; the suite refuses to
+reset or truncate any other database.
 
 ```powershell
 uv run --project apps/api --with ruff ruff check apps/api

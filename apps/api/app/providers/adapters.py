@@ -59,6 +59,11 @@ class StoreAdapter(abc.ABC):
 
 
 def _safe_url(url: str) -> tuple[str, str, str, str]:
+    # urllib removes these characters anywhere in a URL before exposing the
+    # parsed authority. Refuse them first so the API and WHATWG-based browser
+    # check compare the same submitted host rather than different normalisations.
+    if any(character in url for character in "\t\r\n") or url != url.rstrip():
+        raise AdapterError("invalid URL")
     try:
         parsed = urlsplit(url)
         port = parsed.port
@@ -66,7 +71,12 @@ def _safe_url(url: str) -> tuple[str, str, str, str]:
         raise AdapterError("invalid URL") from exc
     if parsed.scheme.lower() not in {"http", "https"}:
         raise AdapterError("URL must use http or https")
-    if not parsed.hostname or parsed.username or parsed.password or port is not None:
+    if (
+        not parsed.hostname
+        or "@" in parsed.netloc
+        or parsed.netloc.endswith(":")
+        or port is not None
+    ):
         raise AdapterError("URL host is invalid")
     return (
         parsed.hostname.lower().rstrip("."),

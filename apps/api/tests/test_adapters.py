@@ -57,6 +57,20 @@ def test_parse_and_canonicalize(
         # API then rejects with a 422.
         "https://smile.ebay.com/itm/123456789012",
         "https://evil-amazon.com/dp/B08N5WRWNW",
+        # WHATWG URL parsers decode this host to www.amazon.com, but the API's
+        # urllib parser intentionally compares the submitted host literally.
+        "https://www.amazon%2ecom/dp/B08N5WRWNW",
+        # urllib otherwise removes these before parsing, while the browser-side
+        # parity check deliberately refuses them.
+        "https://www.ama\tzon.com/dp/B08N5WRWNW",
+        "https://www.amazon.com/dp/B08N5WRWNW\n",
+        "https://www.amazon.com/dp/B08N5WRWNW?tag=value ",
+        "https://www.amazon.com/dp/B08N5WRWNW#fragment ",
+        # Empty userinfo and an empty explicit port are still authority syntax
+        # that the browser check rejects.
+        "https://@www.amazon.com/dp/B08N5WRWNW",
+        "https://:@www.amazon.com/dp/B08N5WRWNW",
+        "https://www.amazon.com:/dp/B08N5WRWNW",
     ],
 )
 def test_rejects_unsupported_or_non_product_urls(url: str) -> None:
